@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -26,11 +26,20 @@
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE"
-      ]
+      ],
+      "package": "com.yourname.piholemanager"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "newArchEnabled": true
+    "newArchEnabled": true,
+    "extra": {
+      "eas": {
+        "projectId": "d19edbdb-d7a6-454b-bc1d-7df64a22de80"
+      }
+    },
+    "plugins": [
+      "expo-font"
+    ]
   }
 }
