@@ -39,7 +39,8 @@
       }
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      "expo-system-ui"
     ]
   }
 }

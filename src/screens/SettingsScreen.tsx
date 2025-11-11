@@ -61,13 +61,10 @@ const SettingsScreen: React.FC = () => {
 
     setIsTesting(true);
     try {
-        console.log('Testing connection to:', baseUrl.trim());
       // Test basic connection using the auth endpoint
       const connectionResult = await testConnection({ 
         baseUrl: baseUrl.trim() 
       }).unwrap();
-
-      console.log('Connection test result:', connectionResult);
 
       if (connectionResult?.connected) {
         dispatch(setConnectionStatus(true));
@@ -123,7 +120,6 @@ const SettingsScreen: React.FC = () => {
 
     try {
       const result = await login({ password: password.trim() }).unwrap();
-      console.log('Login result:', JSON.stringify(result));
 
       if (result.session?.valid && result.session?.sid) {
         dispatch(setAuthentication({ 

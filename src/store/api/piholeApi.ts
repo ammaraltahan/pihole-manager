@@ -1,6 +1,6 @@
 import { createApi, fetchBaseQuery, FetchBaseQueryError } from '@reduxjs/toolkit/query/react';
 import { AuthRequest, AuthResponse, BlockingStatus, QueryLogResponse } from '../types';
-import { PiHoleSummary, RecentBlocked } from '../../types/pihole';
+import { PiHoleSummary, RecentBlocked, SystemInfo } from '../../types/pihole';
 import baseQueryWithReauth from './baseQuery';
 
 export const piHoleApi = createApi({
@@ -31,7 +31,7 @@ export const piHoleApi = createApi({
         }
         return {
           success: false,
-          message: `Login failed: ${response.status}`
+          message: `Login failed: ${response.status} ${JSON.stringify(response.data ?? '{}')}`
         };
       },
     }),
@@ -109,7 +109,7 @@ export const piHoleApi = createApi({
       query: () => '/info/version',
     }),
 
-    getSystemInfo: builder.query<any, void>({
+    getSystemInfo: builder.query<SystemInfo, void>({
       query: () => '/info/system',
     }),
 

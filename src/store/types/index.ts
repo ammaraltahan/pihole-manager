@@ -48,5 +48,7 @@ export interface AuthRequest {
 }
 
 export interface BlockingStatus {
-  enabled: boolean;
+  blocking: 'enabled' | 'disabled' | 'failed' | 'unknown';
+  timer: number|null;
+  took: number;
 }

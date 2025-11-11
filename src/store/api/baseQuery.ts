@@ -6,7 +6,6 @@ const customBaseQuery = fetchBaseQuery({
   prepareHeaders: (headers, { getState }) => {
     const state = getState() as any;
     const sid = state.auth?.sid;
-    console.log('Preparing headers with SID:', sid);
     if (sid) {
       headers.set('X-FTL-SID', sid);
     }
@@ -30,7 +29,6 @@ const baseQueryWithReauth = async (args: any, api: any, extraOptions: any) => {
   // Handle network errors
   if (result.error && result.error.status === 'FETCH_ERROR') {
     console.error('Network error:', result.error);
-    console.log('Request args:', args);
     // Transform network errors to have proper status codes
     result.error = {
       status: 'CUSTOM_ERROR',
@@ -45,7 +43,7 @@ const baseQueryWithReauth = async (args: any, api: any, extraOptions: any) => {
   // Handle 401 errors (authentication required)
   if (result.error && result.error.status === 401) {
     // This is expected for auth endpoint without credentials
-    if (args.url.includes('/auth') && args.method === 'GET') {
+    if (args && args.url?.includes('/auth') && args.method === 'GET') {
       // Transform this into a "success" for connection test purposes
       return {
         data: {

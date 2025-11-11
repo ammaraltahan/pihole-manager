@@ -16,7 +16,7 @@ const ToggleButton: React.FC<ToggleButtonProps> = ({
     <TouchableOpacity
       style={[
         styles.button,
-        isEnabled ? styles.enabledButton : styles.disabledButton
+        isEnabled ? styles.disabledButton : styles.enabledButton
       ]}
       onPress={() => onToggle(!isEnabled)}
       disabled={isLoading}

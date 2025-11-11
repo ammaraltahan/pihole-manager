@@ -118,7 +118,7 @@ const DashboardScreen: React.FC = () => {
           <RecentlyBlockedDomains blockedData={recentBlocked} />
 
           <ToggleButton
-            isEnabled={blockingStatus?.enabled ?? false}
+            isEnabled={blockingStatus?.blocking === 'enabled'}
             onToggle={handleToggle}
             isLoading={isToggleLoading}
           />

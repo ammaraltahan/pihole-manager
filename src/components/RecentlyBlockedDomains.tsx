@@ -36,7 +36,6 @@ const formatTimeAgo = (timestamp: number): string => {
 
 const RecentlyBlockedDomains: React.FC<RecentlyBlockedDomainsProps> = ({ blockedData }) => {
   const [blockedDomains, setBlockedDomains] = useState<BlockedDomain[]>([]);
-console.log('RecentlyBlockedDomains rendered with data:', blockedData);
   useEffect(() => {
     if (blockedData?.blocked && blockedData.blocked.length > 0) {
       const timestamp = Date.now();

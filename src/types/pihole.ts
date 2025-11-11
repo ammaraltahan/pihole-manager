@@ -97,6 +97,49 @@ export interface PiHoleSummary {
   took: number
 }
 
+export interface SystemInfo {
+  system: {
+    uptime: number;
+    memory: {
+      ram: {
+        total: number;
+        free: number;
+        used: number;
+        available: number;
+        "%used": number;
+      };
+      swap: {
+        total: number,
+        used: number,
+        free: number,
+        "%used": number;
+      }
+    },
+    "procs": number,
+    "cpu": {
+      nprocs: number,
+      "%cpu": number,
+      load: {
+        raw: [
+          number,
+          number,
+          number
+        ],
+        percent: [
+          number,
+          number,
+          number
+        ]
+      }
+    },
+    ftl: {
+      "%mem": number,
+      "%cpu": number
+    }
+  },
+  took: number
+}
+
 export interface PiHoleConfig {
   baseUrl: string;
   apiToken?: string;

@@ -6,9 +6,11 @@ import { Provider } from 'react-redux';
 import { store } from './src/store';
 import DashboardScreen from './src/screens/DashboardScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import HealthScreen from './src/screens/HealthScreen';
 
 export type RootTabParamList = {
   Dashboard: undefined;
+  Health: undefined;
   Settings: undefined;
 };
 
@@ -25,6 +27,8 @@ export default function App() {
 
               if (route.name === 'Dashboard') {
                 iconName = focused ? 'speedometer' : 'speedometer-outline';
+              } else if (route.name === 'Health') {
+                iconName = focused ? 'analytics' : 'analytics-outline';
               } else if (route.name === 'Settings') {
                 iconName = focused ? 'settings' : 'settings-outline';
               } else {
@@ -41,6 +45,11 @@ export default function App() {
             name="Dashboard" 
             component={DashboardScreen}
             options={{ title: 'Pi-hole Dashboard' }}
+          />
+          <Tab.Screen
+            name="Health"
+            component={HealthScreen}
+            options={{ title: 'Health' }}
           />
           <Tab.Screen 
             name="Settings" 
