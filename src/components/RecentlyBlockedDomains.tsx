@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, FlatList } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, FlatList, RefreshControl } from 'react-native';
 
 interface BlockedDomain {
   domain: string;
@@ -11,6 +11,8 @@ interface RecentlyBlockedDomainsProps {
     blocked: string[];
     took: number;
   };
+  onRefresh?: () => void;
+  isLoading?: boolean;
 }
 
 const formatTimeAgo = (timestamp: number): string => {
@@ -34,7 +36,7 @@ const formatTimeAgo = (timestamp: number): string => {
   return `${days}d ago`;
 };
 
-const RecentlyBlockedDomains: React.FC<RecentlyBlockedDomainsProps> = ({ blockedData }) => {
+const RecentlyBlockedDomains: React.FC<RecentlyBlockedDomainsProps> = ({ blockedData, onRefresh, isLoading }) => {
   const [blockedDomains, setBlockedDomains] = useState<BlockedDomain[]>([]);
   useEffect(() => {
     if (blockedData?.blocked && blockedData.blocked.length > 0) {
@@ -59,6 +61,7 @@ const RecentlyBlockedDomains: React.FC<RecentlyBlockedDomainsProps> = ({ blocked
     }
   }, [blockedData]);
 
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Recently Blocked Domains</Text>
@@ -66,6 +69,13 @@ const RecentlyBlockedDomains: React.FC<RecentlyBlockedDomainsProps> = ({ blocked
         data={blockedDomains}
         keyExtractor={(item) => `${item.domain}-${item.timestamp}`} 
         ListEmptyComponent={<Text style={styles.emptyText}>No domains blocked yet</Text>}
+        refreshControl={
+                <RefreshControl
+                  refreshing={isLoading??false}
+                  onRefresh={onRefresh}
+                  colors={['#2196f3']}
+                />
+              }
         renderItem={({ item }) => (
              <View key={`${item.domain}-${item.timestamp}`} style={styles.blockedItem}>
             <Text style={styles.blockedDomain} numberOfLines={1} ellipsizeMode="middle">
@@ -79,24 +89,6 @@ const RecentlyBlockedDomains: React.FC<RecentlyBlockedDomainsProps> = ({ blocked
           </View>
         )}
       />
-      {/* <ScrollView style={styles.blockedList} nestedScrollEnabled>
-
-        {blockedDomains.map((item) => (
-          <View key={`${item.domain}-${item.timestamp}`} style={styles.blockedItem}>
-            <Text style={styles.blockedDomain} numberOfLines={1} ellipsizeMode="middle">
-              {item.domain}
-            </Text>
-            <View style={styles.blockedTimeBadge}>
-              <Text style={styles.blockedTimeText}>
-                {formatTimeAgo(item.timestamp)}
-              </Text>
-            </View>
-          </View>
-        ))}
-        {blockedDomains.length === 0 && (
-          <Text style={styles.emptyText}>No domains blocked yet</Text>
-        )}
-      </ScrollView> */}
     </View>
   );
 };

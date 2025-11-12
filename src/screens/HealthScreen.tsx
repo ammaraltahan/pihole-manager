@@ -20,8 +20,7 @@ interface SystemInfo {
 
 export default function HealthDashboard() {
 
-  const { data: info, error, isLoading } = useGetSystemInfoQuery(undefined, {pollingInterval: 5000});
-
+  const { data: info } = useGetSystemInfoQuery(undefined, {pollingInterval: 5000});
   const [system, setSystem] = useState<SystemInfo | null>(null);
 
   useEffect(() => {
@@ -29,7 +28,7 @@ export default function HealthDashboard() {
       
       setSystem({
         uptime: info.system.uptime,
-        cpuLoad: info.system.cpu.load.raw,
+        cpuLoad: info.system.cpu.load.percent,
         cpuPercent: info.system.cpu['%cpu'],
         memoryUsed: info.system.memory.ram.used,
         memoryTotal: info.system.memory.ram.total,
@@ -47,7 +46,7 @@ export default function HealthDashboard() {
   if (!system) return <Text>Loading...</Text>;
 
   const cpuData = system.cpuLoad.map((val, idx) => ({
-    value: val * 100,
+    value: val,
     label: ['1m', '5m', '15m'][idx],
   }));
 

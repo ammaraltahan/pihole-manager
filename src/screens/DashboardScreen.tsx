@@ -96,16 +96,7 @@ const DashboardScreen: React.FC = () => {
   const isToggleLoading = isEnabling || isDisabling;
 
   return (
-    <ScrollView 
-      style={styles.container}
-      refreshControl={
-        <RefreshControl
-          refreshing={isLoading}
-          onRefresh={onRefresh}
-          colors={['#2196f3']}
-        />
-      }
-    >
+    <View style={styles.container}>
       <StatusCard 
         summary={summary || undefined} 
         isConnected={isConnected && isAuthenticated}
@@ -115,7 +106,7 @@ const DashboardScreen: React.FC = () => {
       
       {isConnected && isAuthenticated && !summaryError && (
         <>
-          <RecentlyBlockedDomains blockedData={recentBlocked} />
+          <RecentlyBlockedDomains blockedData={recentBlocked} onRefresh={onRefresh} isLoading={isSummaryLoading} />
 
           <ToggleButton
             isEnabled={blockingStatus?.blocking === 'enabled'}
@@ -142,7 +133,7 @@ const DashboardScreen: React.FC = () => {
           </Text>
         </View>
       )}
-    </ScrollView>
+    </View>
   );
 };
 

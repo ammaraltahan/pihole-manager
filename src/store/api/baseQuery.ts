@@ -1,4 +1,4 @@
-import {fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import {BaseQueryApi, FetchArgs, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 
 // Custom base query with better error handling
 const customBaseQuery = fetchBaseQuery({
@@ -23,9 +23,9 @@ const customBaseQuery = fetchBaseQuery({
 });
 
 // Wrap the base query with better error handling
-const baseQueryWithReauth = async (args: any, api: any, extraOptions: any) => {
+const baseQueryWithReauth = async (args: string | FetchArgs, api: BaseQueryApi, extraOptions: {}) => {
   let result = await customBaseQuery(args, api, extraOptions);
-  
+
   // Handle network errors
   if (result.error && result.error.status === 'FETCH_ERROR') {
     console.error('Network error:', result.error);
@@ -34,24 +34,32 @@ const baseQueryWithReauth = async (args: any, api: any, extraOptions: any) => {
       status: 'CUSTOM_ERROR',
       error: "Network request failed. Check your connection and ensure you can access the Pi-hole server.",
       data: {
-        message: 'Network request failed. Check your connection and ensure you can access the Pi-hole server.',
+        message: 'Network request failed.' + JSON.stringify(result.error),
         originalError: result.error
       }
-    };
+    }
+  }
+
+  if(result.error && result.error.status === 'TIMEOUT_ERROR') {
+    result.error = {
+      status: 'TIMEOUT_ERROR',
+      error: "Network request timed out." + JSON.stringify(result.error),
+    }
   }
   
   // Handle 401 errors (authentication required)
   if (result.error && result.error.status === 401) {
     // This is expected for auth endpoint without credentials
-    if (args && args.url?.includes('/auth') && args.method === 'GET') {
-      // Transform this into a "success" for connection test purposes
+
+    if(typeof args === 'object' && args.url?.includes('/auth') && args.method === 'GET') {
+       // Transform this into a "success" for connection test purposes
       return {
         data: {
           connected: true,
           requiresAuth: true,
           message: 'Authentication required'
         }
-      };
+      }
     }
   }
   

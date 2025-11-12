@@ -24,22 +24,23 @@ import {
   useLoginMutation 
 } from '../store/api/piholeApi';
 
+const PI_HOLE_DEFAULT_URL = 'http://pi.hole';
+
 const SettingsScreen: React.FC = () => {
   const dispatch = useAppDispatch();
   const { piHoleConfig, isConnected } = useAppSelector((state) => state.settings);
   const { isAuthenticated, requiresAuth } = useAppSelector((state) => state.auth);
   
-  const [baseUrl, setBaseUrl] = useState(piHoleConfig?.baseUrl || 'http://pi.hole');
+  const [baseUrl, setBaseUrl] = useState(piHoleConfig?.baseUrl || PI_HOLE_DEFAULT_URL);
   const [password, setPassword] = useState(piHoleConfig?.password || '');
-  const [isTesting, setIsTesting] = useState(false);
   const [savePassword, setSavePassword] = useState(true);
 
   // RTK Query hooks
-  const [testConnection, { data: connectionTestResult }] = useLazyTestConnectionQuery();
+  const [testConnection, {isLoading: isTesting}] = useLazyTestConnectionQuery();
   const [login, { isLoading: isLoggingIn }] = useLoginMutation();
 
   // Check if auth is required for this Pi-hole
-  const { data: authStatus, refetch: checkAuth } = useCheckAuthRequiredQuery(undefined, {
+  const { data: authStatus,isUninitialized, refetch: checkAuth } = useCheckAuthRequiredQuery(undefined, {
     skip: !piHoleConfig || !isConnected,
   });
 
@@ -47,7 +48,7 @@ const SettingsScreen: React.FC = () => {
   useEffect(() => {
     if (authStatus !== undefined) {
       dispatch(setAuthRequired(authStatus.session?.valid === false));
-      if (authStatus.session?.valid) {
+      if (authStatus.session?.valid === true) {
         dispatch(setAuthentication({ isAuthenticated: true, sid: authStatus.session?.sid }));
       }
     }
@@ -59,7 +60,6 @@ const SettingsScreen: React.FC = () => {
       return;
     }
 
-    setIsTesting(true);
     try {
       // Test basic connection using the auth endpoint
       const connectionResult = await testConnection({ 
@@ -106,8 +106,6 @@ const SettingsScreen: React.FC = () => {
       console.error('Connection test failed:', error);
       dispatch(setConnectionStatus(false));
       dispatch(setAuthRequired(false));
-    } finally {
-      setIsTesting(false);
     }
   };
 
@@ -157,7 +155,7 @@ const SettingsScreen: React.FC = () => {
           text: 'Clear', 
           style: 'destructive',
           onPress: () => {
-            setBaseUrl('https://pi.hole');
+            setBaseUrl(PI_HOLE_DEFAULT_URL);
             setPassword('');
             dispatch(clearPiHoleConfig());
             dispatch(clearAuth());
@@ -179,7 +177,7 @@ const SettingsScreen: React.FC = () => {
             style={styles.textInput}
             value={baseUrl}
             onChangeText={setBaseUrl}
-            placeholder="https://pi.hole"
+            placeholder={PI_HOLE_DEFAULT_URL}
             placeholderTextColor="#999"
             autoCapitalize="none"
             autoCorrect={false}
