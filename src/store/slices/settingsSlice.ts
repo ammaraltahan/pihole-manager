@@ -37,4 +37,5 @@ export const {
   setConnectionStatus,
   setAuthenticationStatus 
 } = settingsSlice.actions;
-export default settingsSlice.reducer;
+
+export default settingsSlice;

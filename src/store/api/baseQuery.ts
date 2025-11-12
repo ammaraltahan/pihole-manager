@@ -1,4 +1,5 @@
 import {BaseQueryApi, FetchArgs, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import { RootState } from '..';
 
 // Custom base query with better error handling
 const customBaseQuery = fetchBaseQuery({
@@ -22,9 +23,29 @@ const customBaseQuery = fetchBaseQuery({
   timeout: 10000,
 });
 
+
+function joinUrl(base: string, path: string) {
+  const b = base.replace(/\/+$/, '');
+  const p = path.startsWith('/') ? path : `/${path}`;
+  return `${b}${p}`;
+}
+
 // Wrap the base query with better error handling
 const baseQueryWithReauth = async (args: string | FetchArgs, api: BaseQueryApi, extraOptions: {}) => {
-  let result = await customBaseQuery(args, api, extraOptions);
+  const state = api.getState() as RootState;
+  const configuredBaseUrl = state.settings?.piHoleConfig?.baseUrl || 'http://pi.hole/api';
+
+  console.log('Configured Base URL:', configuredBaseUrl, 'state: ', state.settings?.piHoleConfig);
+  const base = configuredBaseUrl.replace(/\/+$/, '');
+  const apiRoot = `${base}/api`;
+
+  const req: FetchArgs = typeof args === 'string' ? { url: args, method: 'GET' } : { ...args };
+
+  // If endpoint already passed an absolute URL (e.g., testConnection), leave it.
+  const isAbsolute = typeof req.url === 'string' && /^https?:\/\//i.test(req.url!);
+  const finalUrl = isAbsolute ? (req.url as string) : joinUrl(apiRoot, req.url as string);
+
+  let result = await customBaseQuery({...req, url: finalUrl}, api, extraOptions);
 
   // Handle network errors
   if (result.error && result.error.status === 'FETCH_ERROR') {
@@ -51,7 +72,7 @@ const baseQueryWithReauth = async (args: string | FetchArgs, api: BaseQueryApi, 
   if (result.error && result.error.status === 401) {
     // This is expected for auth endpoint without credentials
 
-    if(typeof args === 'object' && args.url?.includes('/auth') && args.method === 'GET') {
+    if(req.url?.includes('/auth') && req.method === 'GET') {
        // Transform this into a "success" for connection test purposes
       return {
         data: {

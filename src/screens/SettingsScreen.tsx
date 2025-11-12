@@ -24,6 +24,33 @@ import {
   useLoginMutation 
 } from '../store/api/piholeApi';
 
+import { probeEnvironment } from '../utils/probe';
+
+// Helper to extract host name from a URL
+function extractHost(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname;
+  } catch {
+    // Fallback: try to parse manually
+    const match = url.match(/^(?:https?:\/\/)?([^:/?#]+)(?:[/:?#]|$)/i);
+    return match ? match[1] : undefined;
+  }
+}
+
+// Helper to extract IP address from a URL (if host is an IP)
+function extractIp(url: string): string | undefined {
+  const host = extractHost(url);
+  if (!host) return undefined;
+  // Simple IPv4/IPv6 regex
+  const ipv4 = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+  const ipv6 = /^([a-fA-F\d]{0,4}:){2,7}[a-fA-F\d]{0,4}$/;
+  if (ipv4.test(host) || ipv6.test(host)) {
+    return host;
+  }
+  return undefined;
+}
+
 const PI_HOLE_DEFAULT_URL = 'http://pi.hole';
 
 const SettingsScreen: React.FC = () => {
@@ -53,6 +80,26 @@ const SettingsScreen: React.FC = () => {
       }
     }
   }, [authStatus, dispatch]);
+
+  
+
+
+const doProbe = async (baseUrl: string) => {
+  const { piholeApi, hostnameReachability, ipReachability, dnsLookup } =
+    await probeEnvironment({
+      baseUrl,
+      host: extractHost(baseUrl),
+      ip: extractIp(baseUrl),
+    });
+
+  // Update a small status card in UI:
+  // - piholeApi.blockingEndpoint.reachable ? 'Pi-hole API OK' : 'Not reachable'
+  // - piholeApi.versionEndpoint.version ? show version JSON
+  // - hostnameReachability / ipReachability results
+  // - dnsLookup.addresses?.join(', ') if present
+};
+
+
 
   const handleTestConnection = async () => {
     if (!baseUrl.trim()) {

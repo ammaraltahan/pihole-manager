@@ -40,7 +40,24 @@
     },
     "plugins": [
       "expo-font",
-      "expo-system-ui"
+      "expo-system-ui",
+      [
+      "expo-build-properties", {
+        "android": {
+          "usesCleartextTraffic": true
+        },
+        "ios": {
+              "supportsTablet": true,
+              "bundleIdentifier": "com.yourname.piholemanager",
+              "infoPlist": {
+                "NSLocalNetworkUsageDescription": "PiHole Manager needs local network access to communicate with your Pi-hole server on your Wi‑Fi.",
+                "NSAppTransportSecurity": {
+                  "NSAllowsArbitraryLoads": true
+                }
+              }
+
+        }
+      }]
     ]
   }
 }

@@ -5,8 +5,8 @@ import authReducer from './slices/authSlice';
 
 export const store = configureStore({
   reducer: {
-    settings: settingsReducer,
-    auth: authReducer,
+    settings: settingsReducer.reducer,
+    auth: authReducer.reducer,
     [piHoleApi.reducerPath]: piHoleApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
