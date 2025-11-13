@@ -111,6 +111,17 @@ export const piHoleApi = createApi({
 
     getSystemInfo: builder.query<SystemInfo, void>({
       query: () => '/info/system',
+      transformResponse: (response: SystemInfo) => {
+        // Demo: inject mock recentErrors if not present
+        if (!response.recentErrors) {
+          response.recentErrors = [
+            'FTL service restarted unexpectedly',
+            'High memory usage detected',
+            'DNS query timeout on 10.0.0.2'
+          ];
+        }
+        return response;
+      },
     }),
 
     // Actions

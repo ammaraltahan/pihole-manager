@@ -6,6 +6,8 @@ export interface PiHoleConfig {
 
 export interface SettingsState {
   piHoleConfig: PiHoleConfig | null;
+  profiles: PiHoleConfig[];
+  selectedProfileId: string | null;
   isConnected: boolean;
   isAuthenticated: boolean;
   lastConnected?: string;

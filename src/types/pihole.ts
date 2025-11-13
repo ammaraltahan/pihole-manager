@@ -120,16 +120,8 @@ export interface SystemInfo {
       nprocs: number,
       "%cpu": number,
       load: {
-        raw: [
-          number,
-          number,
-          number
-        ],
-        percent: [
-          number,
-          number,
-          number
-        ]
+        raw: [number, number, number],
+        percent: [number, number, number]
       }
     },
     ftl: {
@@ -137,7 +129,8 @@ export interface SystemInfo {
       "%cpu": number
     }
   },
-  took: number
+  took: number;
+  recentErrors?: string[];
 }
 
 export interface PiHoleConfig {

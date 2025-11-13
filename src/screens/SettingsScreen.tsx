@@ -1,4 +1,7 @@
+  // ...existing code...
+  // Declare recentErrors just before render usage
 import React, { useState, useEffect } from 'react';
+import { Card, Title, Paragraph, Divider, IconButton, ActivityIndicator } from 'react-native-paper';
 import { 
   View, 
   Text, 
@@ -7,7 +10,7 @@ import {
   StyleSheet, 
   Alert, 
   ScrollView,
-  ActivityIndicator,
+  // ActivityIndicator removed (duplicate)
   Switch 
 } from 'react-native';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
@@ -15,16 +18,27 @@ import {
   setPiHoleConfig, 
   clearPiHoleConfig, 
   setConnectionStatus,
-  setAuthenticationStatus 
+  setAuthenticationStatus,
+  addProfile,
+  editProfile,
+  removeProfile,
+  selectProfile
 } from '../store/slices/settingsSlice';
 import { setAuthRequired, setAuthentication, clearAuth } from '../store/slices/authSlice';
-import { 
-  useLazyTestConnectionQuery, 
+import {
+  useLazyTestConnectionQuery,
   useCheckAuthRequiredQuery,
-  useLoginMutation 
+  useLoginMutation,
+  useGetBlockingStatusQuery,
+  useGetVersionQuery,
+  useGetSystemInfoQuery,
+  useGetSummaryQuery
 } from '../store/api/piholeApi';
-
+import { PiHoleConfig } from '../store/types';
 import { probeEnvironment } from '../utils/probe';
+import QuickActions from '../components/QuickActions';
+// ...existing code...
+import QuickActionsWithError from '../components/QuickActionsWithError';
 
 // Helper to extract host name from a URL
 function extractHost(url: string): string | undefined {
@@ -54,17 +68,54 @@ function extractIp(url: string): string | undefined {
 const PI_HOLE_DEFAULT_URL = 'http://pi.hole';
 
 const SettingsScreen: React.FC = () => {
+    // Helper: Format health status
+    const getHealthStatus = () => {
+      if (!isConnected) return 'Disconnected';
+      if (isSystemLoading) return 'Checking...';
+      // Use systemInfo presence for health (customize as needed)
+      if (systemInfo) return 'Healthy';
+      return 'Unhealthy';
+    };
+
+    // Helper: Format blocking status
+    const getBlockingStatus = () => {
+      if (isBlockingLoading) return 'Loading...';
+      if (!blockingStatus) return 'Unknown';
+      return blockingStatus.blocking === 'enabled' ? 'Enabled' : 'Disabled';
+    };
+
+    // Helper: Format version info
+      const getVersionInfo = () => {
+        if (isVersionLoading) return 'Loading...';
+        if (!version) return 'Unknown';
+        // version is a string, not an object
+        return `Pi-hole v${version}`;
+      };
+
+    // Helper: Recent errors (stub, replace with actual error fetch if available)
+    // Declare after hooks and state
   const dispatch = useAppDispatch();
-  const { piHoleConfig, isConnected } = useAppSelector((state) => state.settings);
+  const { piHoleConfig, profiles, selectedProfileId, isConnected } = useAppSelector((state) => state.settings);
   const { isAuthenticated, requiresAuth } = useAppSelector((state) => state.auth);
-  
+
+  // Multi-profile local state for editing
+  const [editingProfile, setEditingProfile] = useState<PiHoleConfig | null>(null);
+
   const [baseUrl, setBaseUrl] = useState(piHoleConfig?.baseUrl || PI_HOLE_DEFAULT_URL);
   const [password, setPassword] = useState(piHoleConfig?.password || '');
   const [savePassword, setSavePassword] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showRetry, setShowRetry] = useState(false);
 
   // RTK Query hooks
   const [testConnection, {isLoading: isTesting}] = useLazyTestConnectionQuery();
   const [login, { isLoading: isLoggingIn }] = useLoginMutation();
+
+  // Pi-hole info hooks
+  const { data: blockingStatus, isLoading: isBlockingLoading } = useGetBlockingStatusQuery(undefined, { skip: !isConnected });
+  const { data: version, isLoading: isVersionLoading } = useGetVersionQuery(undefined, { skip: !isConnected });
+  const { data: systemInfo, isLoading: isSystemLoading } = useGetSystemInfoQuery(undefined, { skip: !isConnected });
+  const { data: summary, isLoading: isSummaryLoading } = useGetSummaryQuery(undefined, { skip: !isConnected });
 
   // Check if auth is required for this Pi-hole
   const { data: authStatus,isUninitialized, refetch: checkAuth } = useCheckAuthRequiredQuery(undefined, {
@@ -101,55 +152,101 @@ const doProbe = async (baseUrl: string) => {
 
 
 
-  const handleTestConnection = async () => {
+  // Multi-profile actions
+  const handleSelectProfile = (baseUrl: string) => {
+    dispatch(selectProfile(baseUrl));
+    const profile = profiles.find(p => p.baseUrl === baseUrl);
+    if (profile) {
+      setBaseUrl(profile.baseUrl);
+      setPassword(profile.password || '');
+    }
+  };
+
+  const handleAddProfile = () => {
     if (!baseUrl.trim()) {
-      Alert.alert('Error', 'Please enter your Pi-hole server URL');
+      setErrorMsg('Please enter a server URL to add profile');
       return;
     }
+    const newProfile: PiHoleConfig = {
+      baseUrl: baseUrl.trim(),
+      password: savePassword ? password.trim() : undefined,
+    };
+    dispatch(addProfile(newProfile));
+    dispatch(selectProfile(newProfile.baseUrl));
+    setErrorMsg(null);
+  };
 
+  const handleEditProfile = () => {
+    if (!editingProfile) return;
+    const updatedProfile: PiHoleConfig = {
+      ...editingProfile,
+      baseUrl: baseUrl.trim(),
+      password: savePassword ? password.trim() : undefined,
+    };
+    dispatch(editProfile(updatedProfile));
+    setEditingProfile(null);
+    setErrorMsg(null);
+  };
+
+  const handleRemoveProfile = (baseUrl: string) => {
+    dispatch(removeProfile(baseUrl));
+    setErrorMsg(null);
+  };
+
+  const handleStartEditProfile = (profile: PiHoleConfig) => {
+    setEditingProfile(profile);
+    setBaseUrl(profile.baseUrl);
+    setPassword(profile.password || '');
+  };
+
+  const handleCancelEditProfile = () => {
+    setEditingProfile(null);
+    setBaseUrl(piHoleConfig?.baseUrl || PI_HOLE_DEFAULT_URL);
+    setPassword(piHoleConfig?.password || '');
+  };
+
+  const handleTestConnection = async () => {
+    setErrorMsg(null);
+    setShowRetry(false);
+    if (!baseUrl.trim()) {
+      setErrorMsg('Please enter your Pi-hole server URL');
+      return;
+    }
     try {
-      // Test basic connection using the auth endpoint
-      const connectionResult = await testConnection({ 
-        baseUrl: baseUrl.trim() 
-      }).unwrap();
-
+      const connectionResult = await testConnection({ baseUrl: baseUrl.trim() }).unwrap();
       if (connectionResult?.connected) {
         dispatch(setConnectionStatus(true));
-        
-        // Save configuration
         const config = {
           baseUrl: baseUrl.trim(),
           password: savePassword ? password.trim() : undefined,
         };
-        
         dispatch(setPiHoleConfig(config));
-        
-        // Update auth requirement based on connection test
+        dispatch(addProfile(config));
         dispatch(setAuthRequired(connectionResult.requiresAuth || false));
-        if(connectionResult.requiresAuth === false){
+        if (connectionResult.requiresAuth === false) {
           dispatch(setAuthenticationStatus(true));
         }
-        
+        setErrorMsg(null);
         Alert.alert(
-          'Success', 
+          'Success',
           `Connected to Pi-hole successfully!${
-            connectionResult.requiresAuth 
-              ? '\n\nAuthentication is required. Please login below.' 
+            connectionResult.requiresAuth
+              ? '\n\nAuthentication is required. Please login below.'
               : '\n\nNo authentication required.'
           }`
         );
-        
-        // If auth is required and we have a password, try to login automatically
         if (connectionResult.requiresAuth && password.trim()) {
           await handleLogin();
         }
       } else {
-        Alert.alert('Error', 'Failed to connect to Pi-hole. Please check your URL and ensure Pi-hole is running.');
+        setErrorMsg('Failed to connect to Pi-hole. Please check your URL and ensure Pi-hole is running.');
+        setShowRetry(true);
         dispatch(setConnectionStatus(false));
         dispatch(setAuthRequired(false));
       }
-    } catch (error) {
-      Alert.alert('Connection Error', 'Unable to reach Pi-hole server. Check your network connection.');
+    } catch (error: any) {
+      setErrorMsg('Unable to reach Pi-hole server. Check your network connection.');
+      setShowRetry(true);
       console.error('Connection test failed:', error);
       dispatch(setConnectionStatus(false));
       dispatch(setAuthRequired(false));
@@ -157,36 +254,35 @@ const doProbe = async (baseUrl: string) => {
   };
 
   const handleLogin = async () => {
-    
+    setErrorMsg(null);
     if (!password.trim()) {
-      Alert.alert('Error', 'Please enter your Pi-hole password');
+      setErrorMsg('Please enter your Pi-hole password');
       return;
     }
-
     try {
       const result = await login({ password: password.trim() }).unwrap();
-
       if (result.session?.valid && result.session?.sid) {
-        dispatch(setAuthentication({ 
-          isAuthenticated: true, 
-          sid: result.session.sid 
+        dispatch(setAuthentication({
+          isAuthenticated: true,
+          sid: result.session.sid,
         }));
         dispatch(setAuthenticationStatus(true));
+        setErrorMsg(null);
         Alert.alert('Success', 'Logged in successfully!');
-        
-        // Update config with password if save is enabled
         if (savePassword) {
-          dispatch(setPiHoleConfig({
+          const updatedProfile = {
             baseUrl: baseUrl.trim(),
             password: password.trim(),
-          }));
+          };
+          dispatch(setPiHoleConfig(updatedProfile));
+          dispatch(editProfile(updatedProfile));
         }
       } else {
-        Alert.alert('Login Failed', result.session.message || 'Invalid password. Please check your Pi-hole password.');
+        setErrorMsg(result.session.message || 'Invalid password. Please check your Pi-hole password.');
         dispatch(setAuthenticationStatus(false));
       }
     } catch (error: any) {
-      Alert.alert('Login Error', 'Failed to authenticate with Pi-hole. Please check your password.');
+      setErrorMsg('Failed to authenticate with Pi-hole. Please check your password.');
       console.error('Login error:', error);
       dispatch(setAuthenticationStatus(false));
     }
@@ -217,26 +313,139 @@ const doProbe = async (baseUrl: string) => {
     <ScrollView style={styles.container}>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Pi-hole Configuration</Text>
-        
+
+
+
+
+        {/* Server Info Card */}
+        {/* Server Info Card (Consolidated) */}
+        {(() => {
+          const recentErrors = (systemInfo && systemInfo.recentErrors) ? systemInfo.recentErrors : [];
+          return (
+            <Card style={styles.infoSection} accessibilityRole="header" accessibilityLabel="Server Information">
+              <Card.Content>
+                <Title style={styles.infoTitle}>Server Health</Title>
+                <View style={styles.infoCard}>
+                  <Paragraph style={styles.infoLabel}>Status:</Paragraph>
+                  <Paragraph style={styles.infoValue}>{getHealthStatus()}</Paragraph>
+                </View>
+                <View style={styles.infoCard}>
+                  <Paragraph style={styles.infoLabel}>Blocking:</Paragraph>
+                  <Paragraph style={styles.infoValue}>{getBlockingStatus()}</Paragraph>
+                </View>
+                <View style={styles.infoCard}>
+                  <Paragraph style={styles.infoLabel}>Version:</Paragraph>
+                  <Paragraph style={styles.infoValue}>{getVersionInfo()}</Paragraph>
+                </View>
+                <Divider style={{ marginVertical: 8 }} />
+                <Title style={styles.infoTitle}>Recent Errors</Title>
+                {recentErrors.length === 0 ? (
+                  <Paragraph style={styles.infoLabel}>No recent errors.</Paragraph>
+                ) : (
+                  recentErrors.map((err: string, idx: number) => (
+                    <View key={idx} style={styles.infoCard}>
+                      <Paragraph style={styles.infoLabel}>{err}</Paragraph>
+                      <IconButton icon="alert-circle" size={20} iconColor="#d32f2f" accessibilityLabel="Error" />
+                    </View>
+                  ))
+                )}
+              </Card.Content>
+            </Card>
+          );
+        })()}
+
+        {/* Quick Actions with error notification */}
+        <QuickActionsWithError isConnected={isConnected} />
+
+        {/* Inline error feedback */}
+        {errorMsg && (
+          <View style={styles.errorBox} accessibilityRole="alert">
+            <Text style={styles.errorText}>{errorMsg}</Text>
+            {showRetry && (
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={handleTestConnection}
+                accessibilityRole="button"
+                accessibilityLabel="Retry Connection"
+                accessibilityHint="Retry connecting to the Pi-hole server"
+              >
+                <Text style={styles.retryText}>Retry</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* Multi-profile UI */}
+        <View style={styles.profileSection}>
+          <Text style={styles.profileTitle}>Server Profiles</Text>
+          {profiles.length === 0 && (
+            <Text style={styles.helpText}>No profiles added yet. Add your first Pi-hole server below.</Text>
+          )}
+          {profiles.map((profile, idx) => (
+            <View key={profile.baseUrl} style={styles.profileRow}>
+              <TouchableOpacity
+                style={selectedProfileId === profile.baseUrl ? styles.selectedProfile : styles.profileItem}
+                onPress={() => handleSelectProfile(profile.baseUrl)}
+                accessibilityRole="button"
+                accessibilityLabel={`Select profile ${profile.baseUrl}`}
+              >
+                <Text style={styles.profileText}>{profile.baseUrl}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.editProfileButton}
+                onPress={() => handleStartEditProfile(profile)}
+                accessibilityRole="button"
+                accessibilityLabel={`Edit profile ${profile.baseUrl}`}
+              >
+                <Text style={styles.editProfileText}>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.removeProfileButton}
+                onPress={() => handleRemoveProfile(profile.baseUrl)}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove profile ${profile.baseUrl}`}
+              >
+                <Text style={styles.removeProfileText}>Remove</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+          {!editingProfile ? (
+            <TouchableOpacity style={styles.addProfileButton} onPress={handleAddProfile} accessibilityRole="button" accessibilityLabel="Add Profile">
+              <Text style={styles.addProfileText}>+ Add Profile</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.editProfileActions}>
+              <TouchableOpacity style={styles.saveEditButton} onPress={handleEditProfile} accessibilityRole="button" accessibilityLabel="Save Profile Edit">
+                <Text style={styles.saveEditText}>Save</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.cancelEditButton} onPress={handleCancelEditProfile} accessibilityRole="button" accessibilityLabel="Cancel Profile Edit">
+                <Text style={styles.cancelEditText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Pi-hole Server URL</Text>
+          <Text style={styles.label} accessibilityRole="text" accessibilityLabel="Pi-hole Server URL">Pi-hole Server URL</Text>
           <TextInput
             style={styles.textInput}
             value={baseUrl}
             onChangeText={setBaseUrl}
             placeholder={PI_HOLE_DEFAULT_URL}
-            placeholderTextColor="#999"
+            placeholderTextColor="#333"
             autoCapitalize="none"
             autoCorrect={false}
+            accessibilityLabel="Enter Pi-hole server URL"
+            accessibilityHint="Include http:// or https:// and hostname or IP address"
+            editable={!isTesting && !isLoggingIn}
           />
-          <Text style={styles.helpText}>
+          <Text style={styles.helpText} accessibilityRole="text">
             Enter the full URL of your Pi-hole server (include http://)
           </Text>
         </View>
 
-        {/* Always show password field since we don't know if auth is required until we test */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>
+          <Text style={styles.label} accessibilityRole="text" accessibilityLabel="Pi-hole Password">
             Pi-hole Password {requiresAuth && '*'}
           </Text>
           <TextInput
@@ -244,30 +453,39 @@ const doProbe = async (baseUrl: string) => {
             value={password}
             onChangeText={setPassword}
             placeholder="Enter your Pi-hole web interface password"
-            placeholderTextColor="#999"
+            placeholderTextColor="#333"
             secureTextEntry
             autoCapitalize="none"
             autoCorrect={false}
+            accessibilityLabel="Enter Pi-hole password"
+            accessibilityHint="Leave empty if no password is set"
+            editable={!isTesting && !isLoggingIn}
           />
-          <Text style={styles.helpText}>
+          <Text style={styles.helpText} accessibilityRole="text">
             Your Pi-hole web interface password (leave empty if no password set)
           </Text>
         </View>
 
         <View style={styles.switchContainer}>
-          <Text style={styles.switchLabel}>Save password securely</Text>
+          <Text style={styles.switchLabel} accessibilityRole="text" accessibilityLabel="Save password securely">Save password securely</Text>
           <Switch
             value={savePassword}
             onValueChange={setSavePassword}
             trackColor={{ false: '#767577', true: '#81b0ff' }}
             thumbColor={savePassword ? '#2196f3' : '#f4f3f4'}
+            accessibilityLabel="Save password securely"
+            accessibilityHint="Toggle to save or not save your password"
+            disabled={isTesting || isLoggingIn}
           />
         </View>
 
         <TouchableOpacity
-          style={[styles.button, styles.testButton]}
+          style={[styles.button, styles.testButton, (isTesting || isLoggingIn) && styles.disabledButton]}
           onPress={handleTestConnection}
-          disabled={isTesting}
+          disabled={isTesting || isLoggingIn}
+          accessibilityRole="button"
+          accessibilityLabel="Test Connection"
+          accessibilityHint="Tests connection to the Pi-hole server"
         >
           {isTesting ? (
             <View style={styles.buttonContent}>
@@ -281,9 +499,12 @@ const doProbe = async (baseUrl: string) => {
 
         {requiresAuth && isConnected && !isAuthenticated && (
           <TouchableOpacity
-            style={[styles.button, styles.loginButton]}
+            style={[styles.button, styles.loginButton, (isTesting || isLoggingIn) && styles.disabledButton]}
             onPress={handleLogin}
-            disabled={!password.trim() || isLoggingIn}
+            disabled={!password.trim() || isLoggingIn || isTesting}
+            accessibilityRole="button"
+            accessibilityLabel="Login"
+            accessibilityHint="Authenticate with Pi-hole server"
           >
             {isLoggingIn ? (
               <View style={styles.buttonContent}>
@@ -297,8 +518,12 @@ const doProbe = async (baseUrl: string) => {
         )}
 
         <TouchableOpacity
-          style={[styles.button, styles.clearButton]}
+          style={[styles.button, styles.clearButton, (isTesting || isLoggingIn) && styles.disabledButton]}
           onPress={handleClearSettings}
+          disabled={isTesting || isLoggingIn}
+          accessibilityRole="button"
+          accessibilityLabel="Clear Settings"
+          accessibilityHint="Clear all Pi-hole configuration settings"
         >
           <Text style={styles.buttonText}>Clear Settings</Text>
         </TouchableOpacity>
@@ -307,25 +532,25 @@ const doProbe = async (baseUrl: string) => {
           <View style={[
             styles.connectionStatus,
             !isAuthenticated && requiresAuth ? styles.authWarning : styles.connected
-          ]}>
-            <Text style={styles.connectedText}>
+          ]} accessibilityLabel="Connection Status">
+            <Text style={styles.connectedText} accessibilityRole="text">
               {isAuthenticated ? '✓ Authenticated' : requiresAuth ? '⚠ Authentication Required' : '✓ Connected (No Auth)'}
             </Text>
-            <Text style={styles.configText}>Server: {baseUrl}</Text>
+            <Text style={styles.configText} accessibilityRole="text">Server: {baseUrl}</Text>
             {isAuthenticated && (
-              <Text style={styles.configText}>Session: Active</Text>
+              <Text style={styles.configText} accessibilityRole="text">Session: Active</Text>
             )}
           </View>
         )}
 
         {/* Help section */}
         <View style={styles.helpSection}>
-          <Text style={styles.helpTitle}>Connection Tips</Text>
-          <Text style={styles.helpItem}>• Ensure your phone is on the same network as Pi-hole</Text>
-          <Text style={styles.helpItem}>• Use the exact IP address of your Pi-hole server</Text>
-          <Text style={styles.helpItem}>• Include http:// in the URL</Text>
-          <Text style={styles.helpItem}>• Password is only needed if you set one in Pi-hole web interface</Text>
-          <Text style={styles.helpItem}>• If no password is set, leave the password field empty</Text>
+          <Text style={styles.helpTitle} accessibilityRole="header" accessibilityLabel="Connection Tips">Connection Tips</Text>
+          <Text style={styles.helpItem} accessibilityRole="text">• Ensure your phone is on the same network as Pi-hole</Text>
+          <Text style={styles.helpItem} accessibilityRole="text">• Use the exact IP address of your Pi-hole server</Text>
+          <Text style={styles.helpItem} accessibilityRole="text">• Include http:// in the URL</Text>
+          <Text style={styles.helpItem} accessibilityRole="text">• Password is only needed if you set one in Pi-hole web interface</Text>
+          <Text style={styles.helpItem} accessibilityRole="text">• If no password is set, leave the password field empty</Text>
         </View>
       </View>
     </ScrollView>
@@ -333,6 +558,39 @@ const doProbe = async (baseUrl: string) => {
 };
 
 const styles = StyleSheet.create({
+    infoSection: {
+      marginBottom: 20,
+      padding: 12,
+      backgroundColor: '#f8f9fa',
+      borderRadius: 8,
+    },
+    infoTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: '#495057',
+      marginBottom: 8,
+    },
+    infoCard: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      backgroundColor: '#fff',
+      borderRadius: 6,
+      padding: 10,
+      marginBottom: 6,
+      borderWidth: 1,
+      borderColor: '#eee',
+    },
+    infoLabel: {
+      fontWeight: '600',
+      color: '#333',
+      fontSize: 15,
+    },
+    infoValue: {
+      color: '#2196f3',
+      fontWeight: 'bold',
+      fontSize: 15,
+    },
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
@@ -354,6 +612,32 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     color: '#333',
     textAlign: 'center',
+  },
+  errorBox: {
+    backgroundColor: '#fdecea',
+    borderLeftWidth: 4,
+    borderLeftColor: '#d32f2f',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  errorText: {
+    color: '#d32f2f',
+    fontSize: 15,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#d32f2f',
+    padding: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  retryText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 14,
   },
   inputGroup: {
     marginBottom: 20,
@@ -404,6 +688,9 @@ const styles = StyleSheet.create({
   clearButton: {
     backgroundColor: '#ff9800',
   },
+  disabledButton: {
+    opacity: 0.6,
+  },
   buttonText: {
     color: 'white',
     fontSize: 16,
@@ -412,7 +699,6 @@ const styles = StyleSheet.create({
   buttonContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
   connectionStatus: {
     marginTop: 20,
@@ -456,6 +742,98 @@ const styles = StyleSheet.create({
     color: '#6c757d',
     marginBottom: 4,
     lineHeight: 16,
+  },
+  profileSection: {
+    marginBottom: 20,
+  },
+  profileTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#333',
+  },
+  profileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  profileItem: {
+    backgroundColor: '#f0f0f0',
+    padding: 10,
+    borderRadius: 6,
+    flex: 1,
+    marginRight: 6,
+  },
+  selectedProfile: {
+    backgroundColor: '#2196f3',
+    padding: 10,
+    borderRadius: 6,
+    flex: 1,
+    marginRight: 6,
+  },
+  profileText: {
+    color: '#333',
+    fontSize: 15,
+  },
+  addProfileButton: {
+    backgroundColor: '#2196f3',
+    padding: 10,
+    borderRadius: 6,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  addProfileText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+  editProfileButton: {
+    backgroundColor: '#ffc107',
+    padding: 8,
+    borderRadius: 6,
+    marginRight: 6,
+  },
+  editProfileText: {
+    color: '#333',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  removeProfileButton: {
+    backgroundColor: '#d32f2f',
+    padding: 8,
+    borderRadius: 6,
+  },
+  removeProfileText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  editProfileActions: {
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  saveEditButton: {
+    backgroundColor: '#4caf50',
+    padding: 10,
+    borderRadius: 6,
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  saveEditText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+  cancelEditButton: {
+    backgroundColor: '#757575',
+    padding: 10,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  cancelEditText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 15,
   },
 });
 

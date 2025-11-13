@@ -35,22 +35,44 @@ const baseQueryWithReauth = async (args: string | FetchArgs, api: BaseQueryApi, 
   const state = api.getState() as RootState;
   const configuredBaseUrl = state.settings?.piHoleConfig?.baseUrl || 'http://pi.hole/api';
 
-  console.log('Configured Base URL:', configuredBaseUrl, 'state: ', state.settings?.piHoleConfig);
   const base = configuredBaseUrl.replace(/\/+$/, '');
   const apiRoot = `${base}/api`;
 
   const req: FetchArgs = typeof args === 'string' ? { url: args, method: 'GET' } : { ...args };
 
   // If endpoint already passed an absolute URL (e.g., testConnection), leave it.
-  const isAbsolute = typeof req.url === 'string' && /^https?:\/\//i.test(req.url!);
+  const isAbsolute = typeof req.url === 'string' && /^https?:\/+/.test(req.url!);
   const finalUrl = isAbsolute ? (req.url as string) : joinUrl(apiRoot, req.url as string);
 
-  let result = await customBaseQuery({...req, url: finalUrl}, api, extraOptions);
+  let result = await customBaseQuery({ ...req, url: finalUrl }, api, extraOptions);
+
+  // Redux integration: update connection status and error details
+  const dispatch = api.dispatch;
+  if (result.error) {
+    if (result.error.status === 'FETCH_ERROR' || result.error.status === 'CUSTOM_ERROR') {
+      dispatch({ type: 'settings/setConnectionStatus', payload: false });
+      dispatch({ type: 'settings/setAuthenticationStatus', payload: false });
+      // Optionally, add error details to state (extend settingsSlice if needed)
+    }
+    if (result.error.status === 'TIMEOUT_ERROR') {
+      dispatch({ type: 'settings/setConnectionStatus', payload: false });
+      // Optionally, add error details to state
+    }
+    if (result.error.status === 401) {
+      dispatch({ type: 'settings/setConnectionStatus', payload: true });
+      dispatch({ type: 'settings/setAuthenticationStatus', payload: false });
+    }
+  } else {
+    // Success: update connection status
+    dispatch({ type: 'settings/setConnectionStatus', payload: true });
+    // If authenticated, update status
+    if (state.auth?.sid) {
+      dispatch({ type: 'settings/setAuthenticationStatus', payload: true });
+    }
+  }
 
   // Handle network errors
   if (result.error && result.error.status === 'FETCH_ERROR') {
-    console.error('Network error:', result.error);
-    // Transform network errors to have proper status codes
     result.error = {
       status: 'CUSTOM_ERROR',
       error: "Network request failed. Check your connection and ensure you can access the Pi-hole server.",
@@ -61,29 +83,26 @@ const baseQueryWithReauth = async (args: string | FetchArgs, api: BaseQueryApi, 
     }
   }
 
-  if(result.error && result.error.status === 'TIMEOUT_ERROR') {
+  if (result.error && result.error.status === 'TIMEOUT_ERROR') {
     result.error = {
       status: 'TIMEOUT_ERROR',
       error: "Network request timed out." + JSON.stringify(result.error),
     }
   }
-  
+
   // Handle 401 errors (authentication required)
   if (result.error && result.error.status === 401) {
-    // This is expected for auth endpoint without credentials
-
-    if(req.url?.includes('/auth') && req.method === 'GET') {
-       // Transform this into a "success" for connection test purposes
+    if (req.url?.includes('/auth') && req.method === 'GET') {
       return {
         data: {
           connected: true,
           requiresAuth: true,
-          message: 'Authentication required'
-        }
-      }
+          message: 'Authentication required',
+        },
+      };
     }
   }
-  
+
   return result;
 };
 export default baseQueryWithReauth;

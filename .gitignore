@@ -39,3 +39,14 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Additional ignore patterns for Node.js/TypeScript/Expo
+coverage/
+build/
+*.log
+.env*
+.vscode/
+.idea/
+Thumbs.db
+*.tmp
+*.swp

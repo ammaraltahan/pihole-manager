@@ -8,6 +8,45 @@ export type ProbeInput = {
   timeoutMs?: number;
 };
 
+// Validation helpers
+export function isValidUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return /^https?:$/.test(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
+
+export function isValidHostname(host: string): boolean {
+  // Accepts 'pi.hole', custom hostnames, and IPs
+  const ipv4 = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+  const ipv6 = /^([a-fA-F\d]{0,4}:){2,7}[a-fA-F\d]{0,4}$/;
+  const hostname = /^[a-zA-Z0-9.-]+$/;
+  return ipv4.test(host) || ipv6.test(host) || hostname.test(host);
+}
+
+export function extractHost(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname;
+  } catch {
+    const match = url.match(/^(?:https?:\/\/)?([^:/?#]+)(?:[/:?#]|$)/i);
+    return match ? match[1] : undefined;
+  }
+}
+
+export function extractIp(url: string): string | undefined {
+  const host = extractHost(url);
+  if (!host) return undefined;
+  const ipv4 = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+  const ipv6 = /^([a-fA-F\d]{0,4}:){2,7}[a-fA-F\d]{0,4}$/;
+  if (ipv4.test(host) || ipv6.test(host)) {
+    return host;
+  }
+  return undefined;
+};
+
 export type ProbeResult = {
   piholeApi: {
     blockingEndpoint: { reachable: boolean; status?: number; error?: string };
@@ -53,6 +92,16 @@ export async function probeEnvironment({
       versionEndpoint:  { reachable: false },
     },
   };
+
+  // Validate baseUrl and host
+  if (!isValidUrl(baseUrl)) {
+    res.piholeApi.blockingEndpoint.error = 'Invalid Pi-hole server URL (must start with http:// or https://)';
+    return res;
+  }
+  if (host && !isValidHostname(host)) {
+    res.hostnameReachability = { reachable: false, error: 'Invalid hostname format' };
+    return res;
+  }
 
   // 1) Pi-hole API: dns/blocking
   try {
@@ -101,6 +150,10 @@ export async function probeEnvironment({
       if (dns?.getIpAddressesForHostname) {
         const [...addrs] = await withTimeout(dns.getIpAddressesForHostname(host), timeoutMs);
         res.dnsLookup = { ok: Array.isArray(addrs) && addrs.length > 0, addresses: addrs || [] };
+        // If pi.hole or custom hostname resolves, mark as reachable
+        if (host === 'pi.hole' || (addrs && addrs.length > 0)) {
+          res.hostnameReachability = { reachable: true, status: 200 };
+        }
       }
     } catch (e: any) {
       res.dnsLookup = { ok: false, error: e?.message ?? String(e) };
