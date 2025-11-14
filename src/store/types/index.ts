@@ -16,7 +16,7 @@ export interface SettingsState {
 export interface AuthState {
   isAuthenticated: boolean;
   sid: string | null | undefined;
-  requiresAuth: boolean;
+  requiresAuth: boolean | null;
 }
 
 export interface QueryLogItem {

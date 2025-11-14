@@ -354,7 +354,7 @@ const SettingsScreen: React.FC = () => {
           </Text>
         </View>
 
-        {requiresAuth && (
+        {requiresAuth === true && (
           <View style={styles.inputGroup}>
             <Text style={styles.label} accessibilityRole="text" accessibilityLabel="Pi-hole Password">
               Pi-hole Password

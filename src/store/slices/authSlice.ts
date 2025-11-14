@@ -3,7 +3,7 @@ import { AuthState } from '../types';
 
 const initialState: AuthState = {
   isAuthenticated: false,
-  requiresAuth: true, // Assume auth is required until we check
+  requiresAuth: null, // Assume auth is required until we check
   sid: undefined,
 };
 
