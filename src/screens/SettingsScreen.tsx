@@ -18,11 +18,7 @@ import {
   setPiHoleConfig, 
   clearPiHoleConfig, 
   setConnectionStatus,
-  setAuthenticationStatus,
-  addProfile,
-  editProfile,
-  removeProfile,
-  selectProfile
+  setAuthenticationStatus
 } from '../store/slices/settingsSlice';
 import { setAuthRequired, setAuthentication, clearAuth } from '../store/slices/authSlice';
 import {
@@ -34,7 +30,7 @@ import {
   useGetSystemInfoQuery,
   useGetSummaryQuery
 } from '../store/api/piholeApi';
-import { PiHoleConfig } from '../store/types';
+// import { PiHoleConfig } from '../store/types';
 import { probeEnvironment } from '../utils/probe';
 import QuickActions from '../components/QuickActions';
 // ...existing code...
@@ -96,11 +92,8 @@ const SettingsScreen: React.FC = () => {
     // Helper: Recent errors (stub, replace with actual error fetch if available)
     // Declare after hooks and state
   const dispatch = useAppDispatch();
-  const { piHoleConfig, profiles, selectedProfileId, isConnected } = useAppSelector((state) => state.settings);
+  const { piHoleConfig, isConnected } = useAppSelector((state) => state.settings);
   const { isAuthenticated, requiresAuth } = useAppSelector((state) => state.auth);
-
-  // Multi-profile local state for editing
-  const [editingProfile, setEditingProfile] = useState<PiHoleConfig | null>(null);
 
   const [baseUrl, setBaseUrl] = useState(piHoleConfig?.baseUrl || PI_HOLE_DEFAULT_URL);
   const [password, setPassword] = useState(piHoleConfig?.password || '');
@@ -128,65 +121,17 @@ const SettingsScreen: React.FC = () => {
   // Update auth requirement when we get the status
   useEffect(() => {
     if (authStatus !== undefined) {
-      dispatch(setAuthRequired(authStatus.session?.valid === false));
-      if (authStatus.session?.valid === true) {
+      // Only dispatch if the value actually changes
+      if (requiresAuth !== (authStatus.session?.valid === false)) {
+        dispatch(setAuthRequired(authStatus.session?.valid === false));
+      }
+      if (authStatus.session?.valid === true && !isAuthenticated) {
         dispatch(setAuthentication({ isAuthenticated: true, sid: authStatus.session?.sid }));
       }
     }
-  }, [authStatus, dispatch]);
+  }, [authStatus, dispatch, requiresAuth, isAuthenticated]);
 
-  // Multi-profile actions
-  const handleSelectProfile = (baseUrl: string) => {
-    dispatch(selectProfile(baseUrl));
-    const profile = profiles.find(p => p.baseUrl === baseUrl);
-    if (profile) {
-      setBaseUrl(profile.baseUrl);
-      setPassword(profile.password || '');
-    }
-  };
-
-  const handleAddProfile = () => {
-    if (!baseUrl.trim()) {
-      setErrorMsg('Please enter a server URL to add profile');
-      return;
-    }
-    const newProfile: PiHoleConfig = {
-      baseUrl: baseUrl.trim(),
-      password: savePassword ? password.trim() : undefined,
-    };
-    dispatch(addProfile(newProfile));
-    dispatch(selectProfile(newProfile.baseUrl));
-    setErrorMsg(null);
-  };
-
-  const handleEditProfile = () => {
-    if (!editingProfile) return;
-    const updatedProfile: PiHoleConfig = {
-      ...editingProfile,
-      baseUrl: baseUrl.trim(),
-      password: savePassword ? password.trim() : undefined,
-    };
-    dispatch(editProfile(updatedProfile));
-    setEditingProfile(null);
-    setErrorMsg(null);
-  };
-
-  const handleRemoveProfile = (baseUrl: string) => {
-    dispatch(removeProfile(baseUrl));
-    setErrorMsg(null);
-  };
-
-  const handleStartEditProfile = (profile: PiHoleConfig) => {
-    setEditingProfile(profile);
-    setBaseUrl(profile.baseUrl);
-    setPassword(profile.password || '');
-  };
-
-  const handleCancelEditProfile = () => {
-    setEditingProfile(null);
-    setBaseUrl(piHoleConfig?.baseUrl || PI_HOLE_DEFAULT_URL);
-    setPassword(piHoleConfig?.password || '');
-  };
+  // Remove all multi-profile actions
 
   const handleTestConnection = async () => {
     setErrorMsg(null);
@@ -204,7 +149,6 @@ const SettingsScreen: React.FC = () => {
           password: savePassword ? password.trim() : undefined,
         };
         dispatch(setPiHoleConfig(config));
-        dispatch(addProfile(config));
         dispatch(setAuthRequired(connectionResult.requiresAuth || false));
         if (connectionResult.requiresAuth === false) {
           dispatch(setAuthenticationStatus(true));
@@ -258,7 +202,6 @@ const SettingsScreen: React.FC = () => {
             password: password.trim(),
           };
           dispatch(setPiHoleConfig(updatedProfile));
-          dispatch(editProfile(updatedProfile));
         }
       } else {
         setErrorMsg(result.session.message || 'Invalid password. Please check your Pi-hole password.');
@@ -315,6 +258,7 @@ const SettingsScreen: React.FC = () => {
                 <Text variant='titleLarge' style={styles.infoTitle}>Recent Errors</Text>
                 <FlatList
                     data={recentErrors.slice(0, 5)}
+                    scrollEnabled={false}
                     keyExtractor={(_, idx) => idx.toString()}
                     ListEmptyComponent={<Text variant='bodyMedium' style={styles.infoLabel}>No recent errors.</Text>}
                     renderItem={({ item }) => (
@@ -362,56 +306,9 @@ const SettingsScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Multi-profile UI */}
-        <View style={styles.profileSection}>
-          <Text style={styles.profileTitle}>Server Profiles</Text>
-          {profiles.length === 0 && (
-            <Text style={styles.helpText}>No profiles added yet. Add your first Pi-hole server below.</Text>
-          )}
-          {profiles.map((profile, idx) => (
-            <View key={profile.baseUrl} style={styles.profileRow}>
-              <TouchableOpacity
-                style={selectedProfileId === profile.baseUrl ? styles.selectedProfile : styles.profileItem}
-                onPress={() => handleSelectProfile(profile.baseUrl)}
-                accessibilityRole="button"
-                accessibilityLabel={`Select profile ${profile.baseUrl}`}
-              >
-                <Text style={styles.profileText}>{profile.baseUrl}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.editProfileButton}
-                onPress={() => handleStartEditProfile(profile)}
-                accessibilityRole="button"
-                accessibilityLabel={`Edit profile ${profile.baseUrl}`}
-              >
-                <Text style={styles.editProfileText}>Edit</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.removeProfileButton}
-                onPress={() => handleRemoveProfile(profile.baseUrl)}
-                accessibilityRole="button"
-                accessibilityLabel={`Remove profile ${profile.baseUrl}`}
-              >
-                <Text style={styles.removeProfileText}>Remove</Text>
-              </TouchableOpacity>
-            </View>
-          ))}
-          {!editingProfile ? (
-            <TouchableOpacity style={styles.addProfileButton} onPress={handleAddProfile} accessibilityRole="button" accessibilityLabel="Add Profile">
-              <Text style={styles.addProfileText}>+ Add Profile</Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.editProfileActions}>
-              <TouchableOpacity style={styles.saveEditButton} onPress={handleEditProfile} accessibilityRole="button" accessibilityLabel="Save Profile Edit">
-                <Text style={styles.saveEditText}>Save</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.cancelEditButton} onPress={handleCancelEditProfile} accessibilityRole="button" accessibilityLabel="Cancel Profile Edit">
-                <Text style={styles.cancelEditText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+        {/* Remove multi-profile UI. Only show single server config fields below. */}
 
+        {/* Show input fields only when adding a profile */}
         <View style={styles.inputGroup}>
           <Text style={styles.label} accessibilityRole="text" accessibilityLabel="Pi-hole Server URL">Pi-hole Server URL</Text>
           <TextInput
@@ -729,98 +626,6 @@ const styles = StyleSheet.create({
     color: '#6c757d',
     marginBottom: 4,
     lineHeight: 16,
-  },
-  profileSection: {
-    marginBottom: 20,
-  },
-  profileTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-    color: '#333',
-  },
-  profileRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  profileItem: {
-    backgroundColor: '#f0f0f0',
-    padding: 10,
-    borderRadius: 6,
-    flex: 1,
-    marginRight: 6,
-  },
-  selectedProfile: {
-    backgroundColor: '#2196f3',
-    padding: 10,
-    borderRadius: 6,
-    flex: 1,
-    marginRight: 6,
-  },
-  profileText: {
-    color: '#333',
-    fontSize: 15,
-  },
-  addProfileButton: {
-    backgroundColor: '#2196f3',
-    padding: 10,
-    borderRadius: 6,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  addProfileText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 15,
-  },
-  editProfileButton: {
-    backgroundColor: '#ffc107',
-    padding: 8,
-    borderRadius: 6,
-    marginRight: 6,
-  },
-  editProfileText: {
-    color: '#333',
-    fontWeight: 'bold',
-    fontSize: 13,
-  },
-  removeProfileButton: {
-    backgroundColor: '#d32f2f',
-    padding: 8,
-    borderRadius: 6,
-  },
-  removeProfileText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 13,
-  },
-  editProfileActions: {
-    flexDirection: 'row',
-    marginTop: 8,
-  },
-  saveEditButton: {
-    backgroundColor: '#4caf50',
-    padding: 10,
-    borderRadius: 6,
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  saveEditText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 15,
-  },
-  cancelEditButton: {
-    backgroundColor: '#757575',
-    padding: 10,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  cancelEditText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 15,
   },
 });
 
