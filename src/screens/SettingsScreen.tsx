@@ -2,6 +2,7 @@
   // Declare recentErrors just before render usage
 import React, { useState, useEffect } from 'react';
 import { Card, Text, Divider, IconButton, ActivityIndicator } from 'react-native-paper';
+import { Snackbar } from 'react-native-paper';
 import { FlatList } from 'react-native';
 import { 
   View, 
@@ -61,6 +62,9 @@ function extractIp(url: string): string | undefined {
 const PI_HOLE_DEFAULT_URL = 'http://pi.hole';
 
 const SettingsScreen: React.FC = () => {
+        // Snackbar state
+        const [snackbarVisible, setSnackbarVisible] = useState(false);
+        const [snackbarMsg, setSnackbarMsg] = useState('');
       // State for toggling URL edit mode
       const [showUrlEdit, setShowUrlEdit] = useState(false);
     // Helper: Format health status
@@ -154,14 +158,8 @@ const SettingsScreen: React.FC = () => {
           dispatch(setAuthenticationStatus(true));
         }
         setErrorMsg(null);
-        Alert.alert(
-          'Success',
-          `Connected to Pi-hole successfully!${
-            connectionResult.requiresAuth
-              ? '\n\nAuthentication is required. Please login below.'
-              : '\n\nNo authentication required.'
-          }`
-        );
+        setSnackbarMsg(`Connected to Pi-hole successfully!${connectionResult.requiresAuth ? '\nAuthentication is required. Please login below.' : '\nNo authentication required.'}`);
+        setSnackbarVisible(true);
         if (connectionResult.requiresAuth && password.trim()) {
           await handleLogin();
         }
@@ -195,13 +193,14 @@ const SettingsScreen: React.FC = () => {
         }));
         dispatch(setAuthenticationStatus(true));
         setErrorMsg(null);
-        Alert.alert('Success', 'Logged in successfully!');
+        setSnackbarMsg('Logged in successfully!');
+        setSnackbarVisible(true);
         if (savePassword) {
-          const updatedProfile = {
+          const updatedConfig = {
             baseUrl: baseUrl.trim(),
             password: password.trim(),
           };
-          dispatch(setPiHoleConfig(updatedProfile));
+          dispatch(setPiHoleConfig(updatedConfig));
         }
       } else {
         setErrorMsg(result.session.message || 'Invalid password. Please check your Pi-hole password.');
@@ -215,27 +214,16 @@ const SettingsScreen: React.FC = () => {
   };
 
   const handleClearSettings = () => {
-    Alert.alert(
-      'Clear Settings',
-      'Are you sure you want to clear all Pi-hole settings?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Clear', 
-          style: 'destructive',
-          onPress: () => {
-            setBaseUrl(PI_HOLE_DEFAULT_URL);
-            setPassword('');
-            dispatch(clearPiHoleConfig());
-            dispatch(clearAuth());
-            Alert.alert('Settings Cleared', 'Pi-hole configuration has been cleared.');
-          }
-        },
-      ]
-    );
+    setBaseUrl(PI_HOLE_DEFAULT_URL);
+    setPassword('');
+    dispatch(clearPiHoleConfig());
+    dispatch(clearAuth());
+    setSnackbarMsg('Pi-hole configuration has been cleared.');
+    setSnackbarVisible(true);
   };
 
   return (
+    <View style={styles.container}>
     <ScrollView style={styles.container}>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Pi-hole Configuration</Text>
@@ -464,6 +452,16 @@ const SettingsScreen: React.FC = () => {
         </View>
       </View>
     </ScrollView>
+    {/* Snackbar for notifications */}
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={3000}
+        action={{ label: 'Close', onPress: () => setSnackbarVisible(false) }}
+      >
+        {snackbarMsg}
+      </Snackbar>
+    </View>
   );
 };
 
