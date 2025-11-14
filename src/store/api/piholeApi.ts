@@ -1,6 +1,7 @@
 import { createApi, fetchBaseQuery, FetchBaseQueryError } from '@reduxjs/toolkit/query/react';
 import { AuthRequest, AuthResponse, BlockingStatus, QueryLogResponse } from '../types';
 import { PiHoleSummary, RecentBlocked, SystemInfo } from '../../types/pihole';
+import { PiHoleVersionResponse } from '../../types/piholeVersionResponse';
 import baseQueryWithReauth from './baseQuery';
 
 export const piHoleApi = createApi({
@@ -105,7 +106,7 @@ export const piHoleApi = createApi({
     }),
 
     // System info
-    getVersion: builder.query<string, void>({
+    getVersion: builder.query<PiHoleVersionResponse, void>({
       query: () => '/info/version',
     }),
 

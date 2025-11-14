@@ -1,10 +1,10 @@
   // ...existing code...
   // Declare recentErrors just before render usage
 import React, { useState, useEffect } from 'react';
-import { Card, Title, Paragraph, Divider, IconButton, ActivityIndicator } from 'react-native-paper';
+import { Card, Text, Paragraph, Divider, IconButton, ActivityIndicator } from 'react-native-paper';
+import { FlatList } from 'react-native';
 import { 
   View, 
-  Text, 
   TextInput, 
   TouchableOpacity, 
   StyleSheet, 
@@ -88,8 +88,9 @@ const SettingsScreen: React.FC = () => {
       const getVersionInfo = () => {
         if (isVersionLoading) return 'Loading...';
         if (!version) return 'Unknown';
+        const {version: {core: {remote: v}}} = version;
         // version is a string, not an object
-        return `Pi-hole v${version}`;
+        return `Pi-hole ${v?.version || 'N/A'}`;
       };
 
     // Helper: Recent errors (stub, replace with actual error fetch if available)
@@ -114,11 +115,13 @@ const SettingsScreen: React.FC = () => {
   // Pi-hole info hooks
   const { data: blockingStatus, isLoading: isBlockingLoading } = useGetBlockingStatusQuery(undefined, { skip: !isConnected });
   const { data: version, isLoading: isVersionLoading } = useGetVersionQuery(undefined, { skip: !isConnected });
-  const { data: systemInfo, isLoading: isSystemLoading } = useGetSystemInfoQuery(undefined, { skip: !isConnected });
-  const { data: summary, isLoading: isSummaryLoading } = useGetSummaryQuery(undefined, { skip: !isConnected });
+  const { data: systemInfo, recentErrors, isLoading: isSystemLoading } = useGetSystemInfoQuery(undefined, { skip: !isConnected, selectFromResult(state) {
+    const recentErrors = (state.data && state.data?.recentErrors) ? state.data?.recentErrors : [];
+    return { ...state, recentErrors };
+  }, });
 
   // Check if auth is required for this Pi-hole
-  const { data: authStatus,isUninitialized, refetch: checkAuth } = useCheckAuthRequiredQuery(undefined, {
+  const { data: authStatus, refetch: checkAuth } = useCheckAuthRequiredQuery(undefined, {
     skip: !piHoleConfig || !isConnected,
   });
 
@@ -131,26 +134,6 @@ const SettingsScreen: React.FC = () => {
       }
     }
   }, [authStatus, dispatch]);
-
-  
-
-
-const doProbe = async (baseUrl: string) => {
-  const { piholeApi, hostnameReachability, ipReachability, dnsLookup } =
-    await probeEnvironment({
-      baseUrl,
-      host: extractHost(baseUrl),
-      ip: extractIp(baseUrl),
-    });
-
-  // Update a small status card in UI:
-  // - piholeApi.blockingEndpoint.reachable ? 'Pi-hole API OK' : 'Not reachable'
-  // - piholeApi.versionEndpoint.version ? show version JSON
-  // - hostnameReachability / ipReachability results
-  // - dnsLookup.addresses?.join(', ') if present
-};
-
-
 
   // Multi-profile actions
   const handleSelectProfile = (baseUrl: string) => {
@@ -313,46 +296,50 @@ const doProbe = async (baseUrl: string) => {
     <ScrollView style={styles.container}>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Pi-hole Configuration</Text>
-
-
-
-
-        {/* Server Info Card */}
-        {/* Server Info Card (Consolidated) */}
-        {(() => {
-          const recentErrors = (systemInfo && systemInfo.recentErrors) ? systemInfo.recentErrors : [];
-          return (
-            <Card style={styles.infoSection} accessibilityRole="header" accessibilityLabel="Server Information">
+        <Card style={styles.infoSection} accessibilityRole="header" accessibilityLabel="Server Information">
               <Card.Content>
-                <Title style={styles.infoTitle}>Server Health</Title>
+                <Text variant='titleLarge' style={styles.infoTitle}>Server Health</Text>
                 <View style={styles.infoCard}>
-                  <Paragraph style={styles.infoLabel}>Status:</Paragraph>
-                  <Paragraph style={styles.infoValue}>{getHealthStatus()}</Paragraph>
+                  <Text variant='bodyMedium' style={styles.infoLabel}>Status:</Text>
+                  <Text variant='bodyMedium' style={styles.infoValue}>{getHealthStatus()}</Text>
                 </View>
                 <View style={styles.infoCard}>
-                  <Paragraph style={styles.infoLabel}>Blocking:</Paragraph>
-                  <Paragraph style={styles.infoValue}>{getBlockingStatus()}</Paragraph>
+                  <Text variant='bodyMedium' style={styles.infoLabel}>Blocking:</Text>
+                  <Text variant='bodyMedium' style={styles.infoValue}>{getBlockingStatus()}</Text>
                 </View>
                 <View style={styles.infoCard}>
-                  <Paragraph style={styles.infoLabel}>Version:</Paragraph>
-                  <Paragraph style={styles.infoValue}>{getVersionInfo()}</Paragraph>
+                  <Text variant='bodyMedium' style={styles.infoLabel}>Version:</Text>
+                  <Text variant='bodyMedium' style={styles.infoValue}>{getVersionInfo()}</Text>
                 </View>
                 <Divider style={{ marginVertical: 8 }} />
-                <Title style={styles.infoTitle}>Recent Errors</Title>
-                {recentErrors.length === 0 ? (
-                  <Paragraph style={styles.infoLabel}>No recent errors.</Paragraph>
-                ) : (
-                  recentErrors.map((err: string, idx: number) => (
-                    <View key={idx} style={styles.infoCard}>
-                      <Paragraph style={styles.infoLabel}>{err}</Paragraph>
-                      <IconButton icon="alert-circle" size={20} iconColor="#d32f2f" accessibilityLabel="Error" />
-                    </View>
-                  ))
-                )}
+                <Text variant='titleLarge' style={styles.infoTitle}>Recent Errors</Text>
+                <FlatList
+                    data={recentErrors.slice(0, 5)}
+                    keyExtractor={(_, idx) => idx.toString()}
+                    ListEmptyComponent={<Text variant='bodyMedium' style={styles.infoLabel}>No recent errors.</Text>}
+                    renderItem={({ item }) => (
+                      <View style={styles.infoCard}>
+                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', flex: 1 }}>
+                          <Text
+                            variant='bodyMedium'
+                            style={[styles.infoLabel, { flex: 1 }]}
+                            numberOfLines={0}
+                          >
+                            {item}
+                          </Text>
+                          <IconButton
+                            icon="alert-circle"
+                            size={20}
+                            iconColor="#d32f2f"
+                            accessibilityLabel="Error"
+                            style={{ marginLeft: 8, marginTop: 2 }}
+                          />
+                        </View>
+                      </View>
+                    )}
+                  />
               </Card.Content>
             </Card>
-          );
-        })()}
 
         {/* Quick Actions with error notification */}
         <QuickActionsWithError isConnected={isConnected} />
