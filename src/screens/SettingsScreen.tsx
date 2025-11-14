@@ -1,7 +1,7 @@
   // ...existing code...
   // Declare recentErrors just before render usage
 import React, { useState, useEffect } from 'react';
-import { Card, Text, Paragraph, Divider, IconButton, ActivityIndicator } from 'react-native-paper';
+import { Card, Text, Divider, IconButton, ActivityIndicator } from 'react-native-paper';
 import { FlatList } from 'react-native';
 import { 
   View, 
@@ -30,9 +30,6 @@ import {
   useGetSystemInfoQuery,
   useGetSummaryQuery
 } from '../store/api/piholeApi';
-// import { PiHoleConfig } from '../store/types';
-import { probeEnvironment } from '../utils/probe';
-import QuickActions from '../components/QuickActions';
 // ...existing code...
 import QuickActionsWithError from '../components/QuickActionsWithError';
 
@@ -64,6 +61,8 @@ function extractIp(url: string): string | undefined {
 const PI_HOLE_DEFAULT_URL = 'http://pi.hole';
 
 const SettingsScreen: React.FC = () => {
+      // State for toggling URL edit mode
+      const [showUrlEdit, setShowUrlEdit] = useState(false);
     // Helper: Format health status
     const getHealthStatus = () => {
       if (!isConnected) return 'Disconnected';
@@ -121,15 +120,16 @@ const SettingsScreen: React.FC = () => {
   // Update auth requirement when we get the status
   useEffect(() => {
     if (authStatus !== undefined) {
+          const shouldRequireAuth = authStatus.session?.valid === false;
       // Only dispatch if the value actually changes
-      if (requiresAuth !== (authStatus.session?.valid === false)) {
-        dispatch(setAuthRequired(authStatus.session?.valid === false));
+      if (requiresAuth !== shouldRequireAuth) {
+        dispatch(setAuthRequired(shouldRequireAuth));
       }
       if (authStatus.session?.valid === true && !isAuthenticated) {
         dispatch(setAuthentication({ isAuthenticated: true, sid: authStatus.session?.sid }));
       }
     }
-  }, [authStatus, dispatch, requiresAuth, isAuthenticated]);
+  }, [authStatus, isAuthenticated, dispatch]);
 
   // Remove all multi-profile actions
 
@@ -311,45 +311,72 @@ const SettingsScreen: React.FC = () => {
         {/* Show input fields only when adding a profile */}
         <View style={styles.inputGroup}>
           <Text style={styles.label} accessibilityRole="text" accessibilityLabel="Pi-hole Server URL">Pi-hole Server URL</Text>
-          <TextInput
-            style={styles.textInput}
-            value={baseUrl}
-            onChangeText={setBaseUrl}
-            placeholder={PI_HOLE_DEFAULT_URL}
-            placeholderTextColor="#333"
-            autoCapitalize="none"
-            autoCorrect={false}
-            accessibilityLabel="Enter Pi-hole server URL"
-            accessibilityHint="Include http:// or https:// and hostname or IP address"
-            editable={!isTesting && !isLoggingIn}
-          />
+          {showUrlEdit ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <TextInput
+                style={{ flex: 1, backgroundColor: '#f0f0f0', borderRadius: 8, padding: 14, justifyContent: 'center' }}
+                value={baseUrl}
+                onChangeText={setBaseUrl}
+                placeholder={PI_HOLE_DEFAULT_URL}
+                placeholderTextColor="#333"
+                autoCapitalize="none"
+                autoCorrect={false}
+                accessibilityLabel="Enter Pi-hole server URL"
+                accessibilityHint="Include http:// or https:// and hostname or IP address"
+                editable={!isTesting && !isLoggingIn}
+              />
+              <TouchableOpacity
+                style={{ marginLeft: 8 }}
+                onPress={() => setShowUrlEdit(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Save URL"
+              >
+                <Text style={{ color: '#2196f3', fontWeight: 'bold' }}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ flex: 1, backgroundColor: '#f0f0f0', borderRadius: 8, padding: 14, justifyContent: 'center' }}>
+                <Text style={{ color: '#2196f3', fontSize: 16 }}>{baseUrl}</Text>
+              </View>
+              <TouchableOpacity
+                style={{ marginLeft: 8 }}
+                onPress={() => setShowUrlEdit(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Customize URL"
+              >
+                <Text style={{ color: '#2196f3', fontWeight: 'bold' }}>Customize</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           <Text style={styles.helpText} accessibilityRole="text">
-            Enter the full URL of your Pi-hole server (include http://)
+            Enter the full URL of your Pi-hole server (hostname, internal IP, or pi.hole)
           </Text>
         </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label} accessibilityRole="text" accessibilityLabel="Pi-hole Password">
-            Pi-hole Password {requiresAuth && '*'}
-          </Text>
-          <TextInput
-            style={styles.textInput}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Enter your Pi-hole web interface password"
-            placeholderTextColor="#333"
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            accessibilityLabel="Enter Pi-hole password"
-            accessibilityHint="Leave empty if no password is set"
-            editable={!isTesting && !isLoggingIn}
-          />
-          <Text style={styles.helpText} accessibilityRole="text">
-            Your Pi-hole web interface password (leave empty if no password set)
-          </Text>
-        </View>
-
+        {requiresAuth && (
+          <View style={styles.inputGroup}>
+            <Text style={styles.label} accessibilityRole="text" accessibilityLabel="Pi-hole Password">
+              Pi-hole Password
+            </Text>
+            <TextInput
+              style={styles.textInput}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Enter your Pi-hole web interface password"
+              placeholderTextColor="#333"
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              accessibilityLabel="Enter Pi-hole password"
+              accessibilityHint="Leave empty if no password is set"
+              editable={!isTesting && !isLoggingIn}
+            />
+            <Text style={styles.helpText} accessibilityRole="text">
+              Your Pi-hole web interface password (leave empty if no password set)
+            </Text>
+          </View>
+        )}
         <View style={styles.switchContainer}>
           <Text style={styles.switchLabel} accessibilityRole="text" accessibilityLabel="Save password securely">Save password securely</Text>
           <Switch
@@ -362,7 +389,6 @@ const SettingsScreen: React.FC = () => {
             disabled={isTesting || isLoggingIn}
           />
         </View>
-
         <TouchableOpacity
           style={[styles.button, styles.testButton, (isTesting || isLoggingIn) && styles.disabledButton]}
           onPress={handleTestConnection}

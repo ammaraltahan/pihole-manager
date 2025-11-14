@@ -1,5 +1,6 @@
 import {BaseQueryApi, FetchArgs, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { RootState } from '..';
+import { setAuthenticationStatus, setConnectionStatus } from '../slices/settingsSlice';
 
 // Custom base query with better error handling
 const customBaseQuery = fetchBaseQuery({
@@ -50,56 +51,17 @@ const baseQueryWithReauth = async (args: string | FetchArgs, api: BaseQueryApi, 
   const dispatch = api.dispatch;
   if (result.error) {
     if (result.error.status === 'FETCH_ERROR' || result.error.status === 'CUSTOM_ERROR') {
-      dispatch({ type: 'settings/setConnectionStatus', payload: false });
-      dispatch({ type: 'settings/setAuthenticationStatus', payload: false });
+      dispatch(setConnectionStatus(false));
+      dispatch(setAuthenticationStatus(false));
       // Optionally, add error details to state (extend settingsSlice if needed)
     }
     if (result.error.status === 'TIMEOUT_ERROR') {
-      dispatch({ type: 'settings/setConnectionStatus', payload: false });
+      dispatch(setConnectionStatus(false));
       // Optionally, add error details to state
     }
     if (result.error.status === 401) {
-      dispatch({ type: 'settings/setConnectionStatus', payload: true });
-      dispatch({ type: 'settings/setAuthenticationStatus', payload: false });
-    }
-  } else {
-    // Success: update connection status
-    dispatch({ type: 'settings/setConnectionStatus', payload: true });
-    // If authenticated, update status
-    if (state.auth?.sid) {
-      dispatch({ type: 'settings/setAuthenticationStatus', payload: true });
-    }
-  }
-
-  // Handle network errors
-  if (result.error && result.error.status === 'FETCH_ERROR') {
-    result.error = {
-      status: 'CUSTOM_ERROR',
-      error: "Network request failed. Check your connection and ensure you can access the Pi-hole server.",
-      data: {
-        message: 'Network request failed.' + JSON.stringify(result.error),
-        originalError: result.error
-      }
-    }
-  }
-
-  if (result.error && result.error.status === 'TIMEOUT_ERROR') {
-    result.error = {
-      status: 'TIMEOUT_ERROR',
-      error: "Network request timed out." + JSON.stringify(result.error),
-    }
-  }
-
-  // Handle 401 errors (authentication required)
-  if (result.error && result.error.status === 401) {
-    if (req.url?.includes('/auth') && req.method === 'GET') {
-      return {
-        data: {
-          connected: true,
-          requiresAuth: true,
-          message: 'Authentication required',
-        },
-      };
+      dispatch(setConnectionStatus(true));
+      dispatch(setAuthenticationStatus(false));
     }
   }
 
