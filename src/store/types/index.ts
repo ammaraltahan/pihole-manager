@@ -1,22 +1,13 @@
 export interface PiHoleConfig {
   baseUrl: string;
   password?: string;
-  sid?: string; // Session ID for authenticated requests
+  sid: string | null; // Session ID for authenticated requests
 }
 
 export interface SettingsState {
   piHoleConfig: PiHoleConfig | null;
-  profiles: PiHoleConfig[];
-  selectedProfileId: string | null;
-  isConnected: boolean;
-  isAuthenticated: boolean;
   lastConnected?: string;
-}
-
-export interface AuthState {
-  isAuthenticated: boolean;
-  sid: string | null | undefined;
-  requiresAuth: boolean | null;
+  authRequired: boolean | null;
 }
 
 export interface QueryLogItem {
@@ -37,12 +28,19 @@ export interface AuthResponse {
   session: {
     valid: boolean;
     totp: boolean;
-    sid: string | null | undefined;
+    sid: string | null;
     csrf: string | null;
     validity: number;
     message: string | null;
-  };
-  took: number;
+  } | null;
+  took: number | null;
+}
+
+export interface TestAuthResponse {
+  requiresAuth: boolean;
+  connected: boolean;
+  message: string;
+  session: AuthResponse['session'] | null;
 }
 
 export interface AuthRequest {

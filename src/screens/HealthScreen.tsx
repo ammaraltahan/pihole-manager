@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
 import { LineChart, PieChart, pieDataItem } from 'react-native-gifted-charts';
 import { useGetSystemInfoQuery } from '../store/api/piholeApi';
+import { useAppSelector } from '../store/hooks';
 
 interface SystemInfo {
   uptime: number;
@@ -19,29 +20,25 @@ interface SystemInfo {
 }
 
 export default function HealthDashboard() {
+  const isAuthRequired = useAppSelector(state => state.settings.authRequired);
 
-  const { data: info } = useGetSystemInfoQuery(undefined, {pollingInterval: 5000});
-  const [system, setSystem] = useState<SystemInfo | null>(null);
-
-  useEffect(() => {
-    if(info)  {
-      
-      setSystem({
-        uptime: info.system.uptime,
-        cpuLoad: info.system.cpu.load.percent,
-        cpuPercent: info.system.cpu['%cpu'],
-        memoryUsed: info.system.memory.ram.used,
-        memoryTotal: info.system.memory.ram.total,
-        memoryFree: info.system.memory.ram.free,
-        memoryAvailable: info.system.memory.ram.available,
-        memoryUsedPercent: info.system.memory.ram['%used'],
-        procs: info.system.procs,
-        ftlCpu: info.system.ftl['%cpu'],
-        ftlMem: info.system.ftl['%mem'],
-      });
-    }
-  }, [info]);
-
+  const { system } = useGetSystemInfoQuery(undefined, {pollingInterval: 5000, skip: isAuthRequired === false, selectFromResult: (result) => {
+    return{
+      system: {
+        uptime: result.data?.system.uptime ?? 0,
+        cpuLoad: result.data?.system.cpu.load.percent ?? [0,0,0],
+        cpuPercent: result.data?.system.cpu['%cpu'] ?? 0,
+        memoryUsed: result.data?.system.memory.ram.used ?? 0,
+        memoryTotal: result.data?.system.memory.ram.total ?? 0,
+        memoryFree: result.data?.system.memory.ram.free ?? 0,
+        memoryAvailable: result.data?.system.memory.ram.available ?? 0,
+        memoryUsedPercent: result.data?.system.memory.ram['%used'] ?? 0,
+        procs: result.data?.system.procs ?? 0,
+        ftlCpu: result.data?.system.ftl['%cpu'] ?? 0,
+        ftlMem: result.data?.system.ftl['%mem'] ?? 0,
+      }
+    }}
+  });
 
   if (!system) return <Text>Loading...</Text>;
 

@@ -6,17 +6,23 @@ import {
   useGetBlockingStatusQuery, 
   useEnableBlockingMutation, 
   useDisableBlockingMutation,
-  useGetRecentBlockedQuery 
+  useGetRecentBlockedQuery, 
+  useCheckAuthRequiredQuery
 } from '../store/api/piholeApi';
-import { setConnectionStatus, setAuthenticationStatus } from '../store/slices/settingsSlice';
+
 import StatusCard from '../components/StatusCard';
 import ToggleButton from '../components/ToggleButton';
 import RecentlyBlockedDomains from '../components/RecentlyBlockedDomains';
+import { setAuthRequired } from '../store/slices/settingsSlice';
 
 const DashboardScreen: React.FC = () => {
+  const { piHoleConfig } = useAppSelector((state) => state.settings);
   const dispatch = useAppDispatch();
-  const { piHoleConfig, isConnected } = useAppSelector((state) => state.settings);
-  const { isAuthenticated, sid } = useAppSelector((state) => state.auth);
+
+  const {isAuthenticated, data: authStatus, error: authError} = useCheckAuthRequiredQuery(undefined, { selectFromResult: (result) => ({
+    isAuthenticated: result.data?.session?.valid === true,
+    ...result
+  })});
 
   // RTK Query hooks - these will use the baseUrl from the store
   const {
@@ -25,7 +31,7 @@ const DashboardScreen: React.FC = () => {
     isLoading: isSummaryLoading,
     refetch: refetchSummary,
   } = useGetSummaryQuery(undefined, {
-    skip: !piHoleConfig || !isConnected || !isAuthenticated,
+    skip: !piHoleConfig || !isAuthenticated,
     pollingInterval: 30000,
   });
 
@@ -34,33 +40,25 @@ const DashboardScreen: React.FC = () => {
     error: statusError,
     isLoading: isStatusLoading,
   } = useGetBlockingStatusQuery(undefined, {
-    skip: !piHoleConfig || !isConnected || !isAuthenticated,
+    skip: !piHoleConfig || !isAuthenticated,
   });
 
   const {
     data: recentBlocked,
   } = useGetRecentBlockedQuery(undefined, {
-    skip: !piHoleConfig || !isConnected || !isAuthenticated,
+    skip: !piHoleConfig || !isAuthenticated,
     pollingInterval: 10000, // Refresh recent blocked more frequently
   });
 
   const [enableBlocking, { isLoading: isEnabling }] = useEnableBlockingMutation();
   const [disableBlocking, { isLoading: isDisabling }] = useDisableBlockingMutation();
 
-  // Handle connection and authentication status
   useEffect(() => {
-    if (summaryError || statusError) {
-      const error: any = summaryError || statusError;
-      if (error.status === 401) {
-        dispatch(setAuthenticationStatus(false));
-      } else {
-        dispatch(setConnectionStatus(false));
-      }
-    } else if (summary) {
-      dispatch(setConnectionStatus(true));
-      dispatch(setAuthenticationStatus(true));
+    if (authError || (authStatus && !authStatus.session?.valid)) {
+      console.warn('Authentication check error:', authError);
+      dispatch(setAuthRequired(true));
     }
-  }, [summary, summaryError, statusError, dispatch]);
+  }, [authError]);
 
   const handleToggle = async (enable: boolean) => {
     if (!piHoleConfig) return;
@@ -76,7 +74,7 @@ const DashboardScreen: React.FC = () => {
       
       // Refetch data after a short delay
       setTimeout(() => {
-        if (piHoleConfig && isConnected && isAuthenticated) {
+        if (piHoleConfig && isAuthenticated) {
           refetchSummary();
         }
       }, 1000);
@@ -87,27 +85,27 @@ const DashboardScreen: React.FC = () => {
   };
 
   const onRefresh = () => {
-    if (piHoleConfig && isConnected && isAuthenticated) {
+    if (piHoleConfig && isAuthenticated) {
       refetchSummary();
     }
   };
 
   const isLoading = isSummaryLoading || isStatusLoading;
   const isToggleLoading = isEnabling || isDisabling;
-
+  
   return (
     <View style={styles.container}>
       <StatusCard 
         summary={summary || undefined} 
-        isConnected={isConnected && isAuthenticated}
+        isConnected={isAuthenticated}
         isLoading={isLoading}
         recentBlocked={recentBlocked}
       />
       
-      {isConnected && isAuthenticated && !summaryError && (
+      {isAuthenticated && !summaryError && (
         <>
           <RecentlyBlockedDomains blockedData={recentBlocked} onRefresh={onRefresh} isLoading={isSummaryLoading} />
-
+          
           <ToggleButton
             isEnabled={blockingStatus?.blocking === 'enabled'}
             onToggle={handleToggle}
@@ -116,7 +114,7 @@ const DashboardScreen: React.FC = () => {
         </>
       )}
 
-      {!isAuthenticated && isConnected && (
+      {!isAuthenticated && (
         <View style={styles.authWarning}>
           <Text style={styles.warningText}>
             Authentication required. Please check your password in Settings.
@@ -124,7 +122,7 @@ const DashboardScreen: React.FC = () => {
         </View>
       )}
 
-      {(!isConnected || summaryError) && (
+      {(!summaryError) && (
         <View style={styles.connectionWarning}>
           <Text style={styles.warningText}>
             {!piHoleConfig 

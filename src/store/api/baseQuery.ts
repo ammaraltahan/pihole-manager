@@ -1,13 +1,13 @@
-import {BaseQueryApi, FetchArgs, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import {BaseQueryApi, FetchArgs, fetchBaseQuery, FetchBaseQueryError } from '@reduxjs/toolkit/query/react';
 import { RootState } from '..';
-import { setAuthenticationStatus, setConnectionStatus } from '../slices/settingsSlice';
+import { setAuthRequired } from '../slices/settingsSlice';
 
 // Custom base query with better error handling
 const customBaseQuery = fetchBaseQuery({
-  baseUrl: 'http://pi.hole/api', // Using full URL to Pi-hole server
   prepareHeaders: (headers, { getState }) => {
-    const state = getState() as any;
-    const sid = state.auth?.sid;
+    const state = getState() as RootState;
+    const sid = state.settings.piHoleConfig?.sid;
+    console.log('customBaseQuery: prepareHeaders with sid=', sid);
     if (sid) {
       headers.set('X-FTL-SID', sid);
     }
@@ -34,7 +34,7 @@ function joinUrl(base: string, path: string) {
 // Wrap the base query with better error handling
 const baseQueryWithReauth = async (args: string | FetchArgs, api: BaseQueryApi, extraOptions: {}) => {
   const state = api.getState() as RootState;
-  const configuredBaseUrl = state.settings?.piHoleConfig?.baseUrl || 'http://pi.hole/api';
+  const configuredBaseUrl = state.settings?.piHoleConfig?.baseUrl || 'http://pi.hole';
 
   const base = configuredBaseUrl.replace(/\/+$/, '');
   const apiRoot = `${base}/api`;
@@ -47,22 +47,10 @@ const baseQueryWithReauth = async (args: string | FetchArgs, api: BaseQueryApi, 
 
   let result = await customBaseQuery({ ...req, url: finalUrl }, api, extraOptions);
 
-  // Redux integration: update connection status and error details
-  const dispatch = api.dispatch;
-  if (result.error) {
-    if (result.error.status === 'FETCH_ERROR' || result.error.status === 'CUSTOM_ERROR') {
-      dispatch(setConnectionStatus(false));
-      dispatch(setAuthenticationStatus(false));
-      // Optionally, add error details to state (extend settingsSlice if needed)
-    }
-    if (result.error.status === 'TIMEOUT_ERROR') {
-      dispatch(setConnectionStatus(false));
-      // Optionally, add error details to state
-    }
-    if (result.error.status === 401) {
-      dispatch(setConnectionStatus(true));
-      dispatch(setAuthenticationStatus(false));
-    }
+  if( result.error && result.error.status === 401) {
+    // Unauthorized - update store to indicate auth is required
+    console.warn('baseQueryWithReauth: 401 Unauthorized - setting authRequired to true');
+    api.dispatch(setAuthRequired(true));
   }
 
   return result;

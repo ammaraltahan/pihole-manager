@@ -1,7 +1,5 @@
-  // ...existing code...
-  // Declare recentErrors just before render usage
-import React, { useState, useEffect } from 'react';
-import { Card, Text, Divider, IconButton, ActivityIndicator } from 'react-native-paper';
+import React, { useEffect, useState } from 'react';
+import { Card, Text, Divider, IconButton, ActivityIndicator, Button } from 'react-native-paper';
 import { Snackbar } from 'react-native-paper';
 import { FlatList } from 'react-native';
 import { 
@@ -9,30 +7,23 @@ import {
   TextInput, 
   TouchableOpacity, 
   StyleSheet, 
-  Alert, 
   ScrollView,
-  // ActivityIndicator removed (duplicate)
   Switch 
 } from 'react-native';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
-import { 
-  setPiHoleConfig, 
-  clearPiHoleConfig, 
-  setConnectionStatus,
-  setAuthenticationStatus
-} from '../store/slices/settingsSlice';
-import { setAuthRequired, setAuthentication, clearAuth } from '../store/slices/authSlice';
 import {
   useLazyTestConnectionQuery,
   useCheckAuthRequiredQuery,
   useLoginMutation,
+  useLogoutMutation,
   useGetBlockingStatusQuery,
   useGetVersionQuery,
   useGetSystemInfoQuery,
-  useGetSummaryQuery
+  useDeleteSessionMutation,
 } from '../store/api/piholeApi';
-// ...existing code...
+
 import QuickActionsWithError from '../components/QuickActionsWithError';
+import { clearPiHoleConfig, setAuthRequired, setPiHoleConfig } from '../store/slices/settingsSlice';
 
 // Helper to extract host name from a URL
 function extractHost(url: string): string | undefined {
@@ -62,19 +53,19 @@ function extractIp(url: string): string | undefined {
 const PI_HOLE_DEFAULT_URL = 'http://pi.hole';
 
 const SettingsScreen: React.FC = () => {
-        // Snackbar state
-        const [snackbarVisible, setSnackbarVisible] = useState(false);
-        const [snackbarMsg, setSnackbarMsg] = useState('');
-      // State for toggling URL edit mode
-      const [showUrlEdit, setShowUrlEdit] = useState(false);
-    // Helper: Format health status
-    const getHealthStatus = () => {
-      if (!isConnected) return 'Disconnected';
+  // Snackbar state
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMsg, setSnackbarMsg] = useState('');
+  // State for toggling URL edit mode
+  const [showUrlEdit, setShowUrlEdit] = useState(false);
+  // Helper: Format health status
+  const getHealthStatus = (status: boolean) => {
+      if (!status) return 'Disconnected';
       if (isSystemLoading) return 'Checking...';
       // Use systemInfo presence for health (customize as needed)
       if (systemInfo) return 'Healthy';
       return 'Unhealthy';
-    };
+  };
 
     // Helper: Format blocking status
     const getBlockingStatus = () => {
@@ -95,18 +86,20 @@ const SettingsScreen: React.FC = () => {
     // Helper: Recent errors (stub, replace with actual error fetch if available)
     // Declare after hooks and state
   const dispatch = useAppDispatch();
-  const { piHoleConfig, isConnected } = useAppSelector((state) => state.settings);
-  const { isAuthenticated, requiresAuth } = useAppSelector((state) => state.auth);
+  const isAuthRequired = useAppSelector((state) => state.settings.authRequired);
 
-  const [baseUrl, setBaseUrl] = useState(piHoleConfig?.baseUrl || PI_HOLE_DEFAULT_URL);
-  const [password, setPassword] = useState(piHoleConfig?.password || '');
+  const [baseUrl, setBaseUrl] = useState(PI_HOLE_DEFAULT_URL);
+  const [password, setPassword] = useState('');
   const [savePassword, setSavePassword] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showRetry, setShowRetry] = useState(false);
+  const [isConnected, setIsConnected] = useState<boolean | null>(null);
 
   // RTK Query hooks
-  const [testConnection, {isLoading: isTesting}] = useLazyTestConnectionQuery();
+  const [testConnection, {data: testConnectionStatus,isLoading: isTesting}] = useLazyTestConnectionQuery();
   const [login, { isLoading: isLoggingIn }] = useLoginMutation();
+  const [logout] = useLogoutMutation();
+  const [deleteSession] = useDeleteSessionMutation();
 
   // Pi-hole info hooks
   const { data: blockingStatus, isLoading: isBlockingLoading } = useGetBlockingStatusQuery(undefined, { skip: !isConnected });
@@ -117,25 +110,34 @@ const SettingsScreen: React.FC = () => {
   }, });
 
   // Check if auth is required for this Pi-hole
-  const { data: authStatus, refetch: checkAuth } = useCheckAuthRequiredQuery(undefined, {
-    skip: !piHoleConfig || !isConnected,
+  const { data: authStatus, isAuthenticated } = useCheckAuthRequiredQuery(undefined, {
+    skip: !isConnected,
+    selectFromResult: (result) => ({
+      isAuthenticated: result.data?.session?.valid === true,
+      ...result
+    })
   });
 
-  // Update auth requirement when we get the status
   useEffect(() => {
-    if (authStatus !== undefined) {
-          const shouldRequireAuth = authStatus.session?.valid === false;
-      // Only dispatch if the value actually changes
-      if (requiresAuth !== shouldRequireAuth) {
-        dispatch(setAuthRequired(shouldRequireAuth));
-      }
-      if (authStatus.session?.valid === true && !isAuthenticated) {
-        dispatch(setAuthentication({ isAuthenticated: true, sid: authStatus.session?.sid }));
+    if (testConnectionStatus) {
+      setIsConnected(testConnectionStatus.connected || false);
+      dispatch(setPiHoleConfig({sid: testConnectionStatus.session?.sid || null, baseUrl: baseUrl, password: savePassword ? password : undefined }))
+      if(testConnectionStatus.session?.valid === true) {
+         dispatch(setAuthRequired(false));
       }
     }
-  }, [authStatus, isAuthenticated, dispatch]);
+  }, [testConnectionStatus]);
 
-  // Remove all multi-profile actions
+  useEffect(() => {
+    if (authStatus) {
+      dispatch(setPiHoleConfig({sid: authStatus.session?.sid || null, baseUrl: baseUrl, password: savePassword ? password : undefined }));
+      if( authStatus.session?.valid === true) {
+        dispatch(setAuthRequired(false));
+      }
+    }
+  }, [authStatus, isAuthRequired]);
+
+  console.log('SettingsScreen render: isConnected=', isConnected, 'isAuthRequired=', isAuthRequired, 'isAuthenticated=', isAuthenticated);
 
   const handleTestConnection = async () => {
     setErrorMsg(null);
@@ -146,17 +148,16 @@ const SettingsScreen: React.FC = () => {
     }
     try {
       const connectionResult = await testConnection({ baseUrl: baseUrl.trim() }).unwrap();
+      
       if (connectionResult?.connected) {
-        dispatch(setConnectionStatus(true));
         const config = {
           baseUrl: baseUrl.trim(),
           password: savePassword ? password.trim() : undefined,
+          sid: connectionResult.session?.sid || null,
         };
+
         dispatch(setPiHoleConfig(config));
-        dispatch(setAuthRequired(connectionResult.requiresAuth || false));
-        if (connectionResult.requiresAuth === false) {
-          dispatch(setAuthenticationStatus(true));
-        }
+
         setErrorMsg(null);
         setSnackbarMsg(`Connected to Pi-hole successfully!${connectionResult.requiresAuth ? '\nAuthentication is required. Please login below.' : '\nNo authentication required.'}`);
         setSnackbarVisible(true);
@@ -166,15 +167,11 @@ const SettingsScreen: React.FC = () => {
       } else {
         setErrorMsg('Failed to connect to Pi-hole. Please check your URL and ensure Pi-hole is running.');
         setShowRetry(true);
-        dispatch(setConnectionStatus(false));
-        dispatch(setAuthRequired(false));
       }
     } catch (error: any) {
       setErrorMsg('Unable to reach Pi-hole server. Check your network connection.');
       setShowRetry(true);
       console.error('Connection test failed:', error);
-      dispatch(setConnectionStatus(false));
-      dispatch(setAuthRequired(false));
     }
   };
 
@@ -187,11 +184,6 @@ const SettingsScreen: React.FC = () => {
     try {
       const result = await login({ password: password.trim() }).unwrap();
       if (result.session?.valid && result.session?.sid) {
-        dispatch(setAuthentication({
-          isAuthenticated: true,
-          sid: result.session.sid,
-        }));
-        dispatch(setAuthenticationStatus(true));
         setErrorMsg(null);
         setSnackbarMsg('Logged in successfully!');
         setSnackbarVisible(true);
@@ -199,26 +191,39 @@ const SettingsScreen: React.FC = () => {
           const updatedConfig = {
             baseUrl: baseUrl.trim(),
             password: password.trim(),
+            sid: result.session.sid,
           };
+
           dispatch(setPiHoleConfig(updatedConfig));
         }
       } else {
-        setErrorMsg(result.session.message || 'Invalid password. Please check your Pi-hole password.');
-        dispatch(setAuthenticationStatus(false));
+        setErrorMsg(result.session?.message || 'Invalid password. Please check your Pi-hole password.');
+       
       }
     } catch (error: any) {
       setErrorMsg('Failed to authenticate with Pi-hole. Please check your password.');
       console.error('Login error:', error);
-      dispatch(setAuthenticationStatus(false));
     }
   };
 
-  const handleClearSettings = () => {
+  const handleClearSettings = async () => {
+    try {
+      await logout().unwrap();
+      
+      console.log('Attempting to delete session from Pi-hole server if exists...', authStatus);
+      if (authStatus?.session?.sid){ 
+        await deleteSession({ sid: authStatus?.session?.sid }).unwrap(); 
+        console.log('Session deleted from Pi-hole server successfully.');}
+    } catch (e) {
+      
+      console.error('Error during logout/session deletion:', e);
+    }
+
     setBaseUrl(PI_HOLE_DEFAULT_URL);
     setPassword('');
     dispatch(clearPiHoleConfig());
-    dispatch(clearAuth());
-    setSnackbarMsg('Pi-hole configuration has been cleared.');
+    dispatch(setAuthRequired(true));
+    setSnackbarMsg('Pi-hole configuration has been cleared and logged out.');
     setSnackbarVisible(true);
   };
 
@@ -232,7 +237,7 @@ const SettingsScreen: React.FC = () => {
                 <Text variant='titleLarge' style={styles.infoTitle}>Server Health</Text>
                 <View style={styles.infoCard}>
                   <Text variant='bodyMedium' style={styles.infoLabel}>Status:</Text>
-                  <Text variant='bodyMedium' style={styles.infoValue}>{getHealthStatus()}</Text>
+                  <Text variant='bodyMedium' style={styles.infoValue}>{getHealthStatus(isConnected??false)}</Text>
                 </View>
                 <View style={styles.infoCard}>
                   <Text variant='bodyMedium' style={styles.infoLabel}>Blocking:</Text>
@@ -274,14 +279,14 @@ const SettingsScreen: React.FC = () => {
             </Card>
 
         {/* Quick Actions with error notification */}
-        <QuickActionsWithError isConnected={isConnected} />
+        <QuickActionsWithError isConnected={isConnected??false} />
 
         {/* Inline error feedback */}
         {errorMsg && (
           <View style={styles.errorBox} accessibilityRole="alert">
             <Text style={styles.errorText}>{errorMsg}</Text>
             {showRetry && (
-              <TouchableOpacity
+              <Button
                 style={styles.retryButton}
                 onPress={handleTestConnection}
                 accessibilityRole="button"
@@ -289,7 +294,7 @@ const SettingsScreen: React.FC = () => {
                 accessibilityHint="Retry connecting to the Pi-hole server"
               >
                 <Text style={styles.retryText}>Retry</Text>
-              </TouchableOpacity>
+              </Button>
             )}
           </View>
         )}
@@ -342,7 +347,7 @@ const SettingsScreen: React.FC = () => {
           </Text>
         </View>
 
-        {requiresAuth === true && (
+        {isAuthRequired === true && (
           <View style={styles.inputGroup}>
             <Text style={styles.label} accessibilityRole="text" accessibilityLabel="Pi-hole Password">
               Pi-hole Password
@@ -363,6 +368,25 @@ const SettingsScreen: React.FC = () => {
             <Text style={styles.helpText} accessibilityRole="text">
               Your Pi-hole web interface password (leave empty if no password set)
             </Text>
+              {isAuthRequired && isConnected && !isAuthenticated && (
+                <TouchableOpacity
+                  style={[styles.button, styles.loginButton, (isTesting || isLoggingIn) && styles.disabledButton]}
+                  onPress={handleLogin}
+                  disabled={!password.trim() || isLoggingIn || isTesting}
+                  accessibilityRole="button"
+                  accessibilityLabel="Login"
+                  accessibilityHint="Authenticate with Pi-hole server"
+                >
+                  {isLoggingIn ? (
+                    <View style={styles.buttonContent}>
+                      <ActivityIndicator color="white" size="small" />
+                      <Text style={styles.buttonText}>Logging in...</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.buttonText}>Login</Text>
+                  )}
+                </TouchableOpacity>
+              )}
           </View>
         )}
         <View style={styles.switchContainer}>
@@ -377,62 +401,37 @@ const SettingsScreen: React.FC = () => {
             disabled={isTesting || isLoggingIn}
           />
         </View>
-        <TouchableOpacity
+        <Button
           style={[styles.button, styles.testButton, (isTesting || isLoggingIn) && styles.disabledButton]}
           onPress={handleTestConnection}
           disabled={isTesting || isLoggingIn}
           accessibilityRole="button"
           accessibilityLabel="Test Connection"
           accessibilityHint="Tests connection to the Pi-hole server"
+          loading={isTesting}
         >
-          {isTesting ? (
-            <View style={styles.buttonContent}>
-              <ActivityIndicator color="white" size="small" />
-              <Text style={styles.buttonText}>Testing Connection...</Text>
-            </View>
-          ) : (
-            <Text style={styles.buttonText}>Test Connection</Text>
-          )}
-        </TouchableOpacity>
+         <Text style={styles.buttonText}>Test Connection</Text>
+        </Button>
 
-        {requiresAuth && isConnected && !isAuthenticated && (
-          <TouchableOpacity
-            style={[styles.button, styles.loginButton, (isTesting || isLoggingIn) && styles.disabledButton]}
-            onPress={handleLogin}
-            disabled={!password.trim() || isLoggingIn || isTesting}
+        {isAuthenticated && (
+          <Button
+            style={[styles.button, styles.clearButton, (isTesting || isLoggingIn) && styles.disabledButton]}
+            onPress={handleClearSettings}
+            disabled={isTesting || isLoggingIn}
             accessibilityRole="button"
-            accessibilityLabel="Login"
-            accessibilityHint="Authenticate with Pi-hole server"
-          >
-            {isLoggingIn ? (
-              <View style={styles.buttonContent}>
-                <ActivityIndicator color="white" size="small" />
-                <Text style={styles.buttonText}>Logging in...</Text>
-              </View>
-            ) : (
-              <Text style={styles.buttonText}>Login</Text>
-            )}
-          </TouchableOpacity>
+            accessibilityLabel="Logout"
+            accessibilityHint="Logout and Clear all Pi-hole configuration settings"
+            textColor="#fff"
+          >Logout</Button>
         )}
-
-        <TouchableOpacity
-          style={[styles.button, styles.clearButton, (isTesting || isLoggingIn) && styles.disabledButton]}
-          onPress={handleClearSettings}
-          disabled={isTesting || isLoggingIn}
-          accessibilityRole="button"
-          accessibilityLabel="Clear Settings"
-          accessibilityHint="Clear all Pi-hole configuration settings"
-        >
-          <Text style={styles.buttonText}>Clear Settings</Text>
-        </TouchableOpacity>
 
         {isConnected && (
           <View style={[
             styles.connectionStatus,
-            !isAuthenticated && requiresAuth ? styles.authWarning : styles.connected
+            !isAuthenticated && isAuthRequired ? styles.authWarning : styles.connected
           ]} accessibilityLabel="Connection Status">
             <Text style={styles.connectedText} accessibilityRole="text">
-              {isAuthenticated ? '✓ Authenticated' : requiresAuth ? '⚠ Authentication Required' : '✓ Connected (No Auth)'}
+              {isAuthenticated ? '✓ Authenticated' : isAuthRequired ? '⚠ Authentication Required' : '✓ Connected (No Auth)'}
             </Text>
             <Text style={styles.configText} accessibilityRole="text">Server: {baseUrl}</Text>
             {isAuthenticated && (
@@ -594,7 +593,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#4caf50',
   },
   clearButton: {
-    backgroundColor: '#ff9800',
+    backgroundColor: '#d04a1dff',
   },
   disabledButton: {
     opacity: 0.6,

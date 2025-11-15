@@ -1,12 +1,10 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { piHoleApi } from './api/piholeApi';
 import settingsReducer from './slices/settingsSlice';
-import authReducer from './slices/authSlice';
 
 export const store = configureStore({
   reducer: {
     settings: settingsReducer.reducer,
-    auth: authReducer.reducer,
     [piHoleApi.reducerPath]: piHoleApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
