@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Text, Divider, IconButton, ActivityIndicator, Button } from 'react-native-paper';
+import { Text, ActivityIndicator, Button } from 'react-native-paper';
 import { Snackbar } from 'react-native-paper';
-import { FlatList } from 'react-native';
+
 import { 
   View, 
   TextInput, 
@@ -13,42 +13,14 @@ import {
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import {
   useLazyTestConnectionQuery,
-  useCheckAuthRequiredQuery,
   useLoginMutation,
   useLogoutMutation,
-  useGetBlockingStatusQuery,
-  useGetVersionQuery,
-  useGetSystemInfoQuery,
   useDeleteSessionMutation,
+  useLazyGetSessionsQuery,
+  useTestConnectionQuery
 } from '../store/api/piholeApi';
 
-import QuickActionsWithError from '../components/QuickActionsWithError';
 import { clearPiHoleConfig, setAuthRequired, setPiHoleConfig } from '../store/slices/settingsSlice';
-
-// Helper to extract host name from a URL
-function extractHost(url: string): string | undefined {
-  try {
-    const parsed = new URL(url);
-    return parsed.hostname;
-  } catch {
-    // Fallback: try to parse manually
-    const match = url.match(/^(?:https?:\/\/)?([^:/?#]+)(?:[/:?#]|$)/i);
-    return match ? match[1] : undefined;
-  }
-}
-
-// Helper to extract IP address from a URL (if host is an IP)
-function extractIp(url: string): string | undefined {
-  const host = extractHost(url);
-  if (!host) return undefined;
-  // Simple IPv4/IPv6 regex
-  const ipv4 = /^(?:\d{1,3}\.){3}\d{1,3}$/;
-  const ipv6 = /^([a-fA-F\d]{0,4}:){2,7}[a-fA-F\d]{0,4}$/;
-  if (ipv4.test(host) || ipv6.test(host)) {
-    return host;
-  }
-  return undefined;
-}
 
 const PI_HOLE_DEFAULT_URL = 'http://pi.hole';
 
@@ -58,30 +30,6 @@ const SettingsScreen: React.FC = () => {
   const [snackbarMsg, setSnackbarMsg] = useState('');
   // State for toggling URL edit mode
   const [showUrlEdit, setShowUrlEdit] = useState(false);
-  // Helper: Format health status
-  const getHealthStatus = (status: boolean) => {
-      if (!status) return 'Disconnected';
-      if (isSystemLoading) return 'Checking...';
-      // Use systemInfo presence for health (customize as needed)
-      if (systemInfo) return 'Healthy';
-      return 'Unhealthy';
-  };
-
-    // Helper: Format blocking status
-    const getBlockingStatus = () => {
-      if (isBlockingLoading) return 'Loading...';
-      if (!blockingStatus) return 'Unknown';
-      return blockingStatus.blocking === 'enabled' ? 'Enabled' : 'Disabled';
-    };
-
-    // Helper: Format version info
-      const getVersionInfo = () => {
-        if (isVersionLoading) return 'Loading...';
-        if (!version) return 'Unknown';
-        const {version: {core: {remote: v}}} = version;
-        // version is a string, not an object
-        return `Pi-hole ${v?.version || 'N/A'}`;
-      };
 
     // Helper: Recent errors (stub, replace with actual error fetch if available)
     // Declare after hooks and state
@@ -91,32 +39,25 @@ const SettingsScreen: React.FC = () => {
   const [baseUrl, setBaseUrl] = useState(PI_HOLE_DEFAULT_URL);
   const [password, setPassword] = useState('');
   const [savePassword, setSavePassword] = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [showRetry, setShowRetry] = useState(false);
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // RTK Query hooks
   const [testConnection, {data: testConnectionStatus,isLoading: isTesting}] = useLazyTestConnectionQuery();
   const [login, { isLoading: isLoggingIn }] = useLoginMutation();
   const [logout] = useLogoutMutation();
   const [deleteSession] = useDeleteSessionMutation();
-
-  // Pi-hole info hooks
-  const { data: blockingStatus, isLoading: isBlockingLoading } = useGetBlockingStatusQuery(undefined, { skip: !isConnected });
-  const { data: version, isLoading: isVersionLoading } = useGetVersionQuery(undefined, { skip: !isConnected });
-  const { data: systemInfo, recentErrors, isLoading: isSystemLoading } = useGetSystemInfoQuery(undefined, { skip: !isConnected, selectFromResult(state) {
-    const recentErrors = (state.data && state.data?.recentErrors) ? state.data?.recentErrors : [];
-    return { ...state, recentErrors };
-  }, });
+  const [getSessions] = useLazyGetSessionsQuery();
 
   // Check if auth is required for this Pi-hole
-  const { data: authStatus, isAuthenticated } = useCheckAuthRequiredQuery(undefined, {
-    skip: !isConnected,
+  const { data: authStatus, isAuthenticated } = useTestConnectionQuery({baseUrl}, {
+    skip: !baseUrl || isConnected === false,
     selectFromResult: (result) => ({
       isAuthenticated: result.data?.session?.valid === true,
       ...result
     })
   });
+  console.log(authStatus);
 
   useEffect(() => {
     if (testConnectionStatus) {
@@ -137,11 +78,8 @@ const SettingsScreen: React.FC = () => {
     }
   }, [authStatus, isAuthRequired]);
 
-  console.log('SettingsScreen render: isConnected=', isConnected, 'isAuthRequired=', isAuthRequired, 'isAuthenticated=', isAuthenticated);
-
   const handleTestConnection = async () => {
-    setErrorMsg(null);
-    setShowRetry(false);
+    
     if (!baseUrl.trim()) {
       setErrorMsg('Please enter your Pi-hole server URL');
       return;
@@ -166,11 +104,10 @@ const SettingsScreen: React.FC = () => {
         }
       } else {
         setErrorMsg('Failed to connect to Pi-hole. Please check your URL and ensure Pi-hole is running.');
-        setShowRetry(true);
+        
       }
     } catch (error: any) {
       setErrorMsg('Unable to reach Pi-hole server. Check your network connection.');
-      setShowRetry(true);
       console.error('Connection test failed:', error);
     }
   };
@@ -181,6 +118,7 @@ const SettingsScreen: React.FC = () => {
       setErrorMsg('Please enter your Pi-hole password');
       return;
     }
+    
     try {
       const result = await login({ password: password.trim() }).unwrap();
       if (result.session?.valid && result.session?.sid) {
@@ -208,12 +146,26 @@ const SettingsScreen: React.FC = () => {
 
   const handleClearSettings = async () => {
     try {
-      await logout().unwrap();
-      
       console.log('Attempting to delete session from Pi-hole server if exists...', authStatus);
+     
       if (authStatus?.session?.sid){ 
-        await deleteSession({ sid: authStatus?.session?.sid }).unwrap(); 
-        console.log('Session deleted from Pi-hole server successfully.');}
+        await logout();
+        
+        // const {sessions} = await getSessions().unwrap();
+        // sessions.forEach(async session => {
+        //   console.log(`Existing session - ID: ${session.id}, Current: ${session.current_session}, TLS Login: ${session.tls.login}`);
+        //   if(session.current_session === true){
+        //     await deleteSession({ sid: session.id }).unwrap();
+        //     console.log(`Deleted current session with ID: ${session.id}`);
+        //   }
+        // });
+
+        
+        
+
+        dispatch(clearPiHoleConfig());
+        dispatch(setAuthRequired(false));
+      }
     } catch (e) {
       
       console.error('Error during logout/session deletion:', e);
@@ -232,75 +184,7 @@ const SettingsScreen: React.FC = () => {
     <ScrollView style={styles.container}>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Pi-hole Configuration</Text>
-        <Card style={styles.infoSection} accessibilityRole="header" accessibilityLabel="Server Information">
-              <Card.Content>
-                <Text variant='titleLarge' style={styles.infoTitle}>Server Health</Text>
-                <View style={styles.infoCard}>
-                  <Text variant='bodyMedium' style={styles.infoLabel}>Status:</Text>
-                  <Text variant='bodyMedium' style={styles.infoValue}>{getHealthStatus(isConnected??false)}</Text>
-                </View>
-                <View style={styles.infoCard}>
-                  <Text variant='bodyMedium' style={styles.infoLabel}>Blocking:</Text>
-                  <Text variant='bodyMedium' style={styles.infoValue}>{getBlockingStatus()}</Text>
-                </View>
-                <View style={styles.infoCard}>
-                  <Text variant='bodyMedium' style={styles.infoLabel}>Version:</Text>
-                  <Text variant='bodyMedium' style={styles.infoValue}>{getVersionInfo()}</Text>
-                </View>
-                <Divider style={{ marginVertical: 8 }} />
-                <Text variant='titleLarge' style={styles.infoTitle}>Recent Errors</Text>
-                <FlatList
-                    data={recentErrors.slice(0, 5)}
-                    scrollEnabled={false}
-                    keyExtractor={(_, idx) => idx.toString()}
-                    ListEmptyComponent={<Text variant='bodyMedium' style={styles.infoLabel}>No recent errors.</Text>}
-                    renderItem={({ item }) => (
-                      <View style={styles.infoCard}>
-                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', flex: 1 }}>
-                          <Text
-                            variant='bodyMedium'
-                            style={[styles.infoLabel, { flex: 1 }]}
-                            numberOfLines={0}
-                          >
-                            {item}
-                          </Text>
-                          <IconButton
-                            icon="alert-circle"
-                            size={20}
-                            iconColor="#d32f2f"
-                            accessibilityLabel="Error"
-                            style={{ marginLeft: 8, marginTop: 2 }}
-                          />
-                        </View>
-                      </View>
-                    )}
-                  />
-              </Card.Content>
-            </Card>
-
-        {/* Quick Actions with error notification */}
-        <QuickActionsWithError isConnected={isConnected??false} />
-
-        {/* Inline error feedback */}
-        {errorMsg && (
-          <View style={styles.errorBox} accessibilityRole="alert">
-            <Text style={styles.errorText}>{errorMsg}</Text>
-            {showRetry && (
-              <Button
-                style={styles.retryButton}
-                onPress={handleTestConnection}
-                accessibilityRole="button"
-                accessibilityLabel="Retry Connection"
-                accessibilityHint="Retry connecting to the Pi-hole server"
-              >
-                <Text style={styles.retryText}>Retry</Text>
-              </Button>
-            )}
-          </View>
-        )}
-
-        {/* Remove multi-profile UI. Only show single server config fields below. */}
-
+       
         {/* Show input fields only when adding a profile */}
         <View style={styles.inputGroup}>
           <Text style={styles.label} accessibilityRole="text" accessibilityLabel="Pi-hole Server URL">Pi-hole Server URL</Text>

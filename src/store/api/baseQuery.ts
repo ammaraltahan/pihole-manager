@@ -19,9 +19,7 @@ const customBaseQuery = fetchBaseQuery({
     headers.set('User-Agent', 'PiHoleManager/1.0.0');
     
     return headers;
-  },
-  // Increase timeout for local network requests
-  timeout: 10000,
+  }
 });
 
 
@@ -49,8 +47,12 @@ const baseQueryWithReauth = async (args: string | FetchArgs, api: BaseQueryApi, 
 
   if( result.error && result.error.status === 401) {
     // Unauthorized - update store to indicate auth is required
-    console.warn('baseQueryWithReauth: 401 Unauthorized - setting authRequired to true');
+    console.warn(`baseQueryWithReauth: path: ${finalUrl} 401 Unauthorized - setting authRequired to true`);
     api.dispatch(setAuthRequired(true));
+  }
+
+  if( result.error && result.error.status === 'FETCH_ERROR') {
+    console.error(`baseQueryWithReauth: path: ${finalUrl} FETCH_ERROR - ${result.error.error}`);
   }
 
   return result;

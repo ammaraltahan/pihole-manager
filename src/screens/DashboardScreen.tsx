@@ -7,7 +7,7 @@ import {
   useEnableBlockingMutation, 
   useDisableBlockingMutation,
   useGetRecentBlockedQuery, 
-  useCheckAuthRequiredQuery
+  useTestConnectionQuery
 } from '../store/api/piholeApi';
 
 import StatusCard from '../components/StatusCard';
@@ -19,10 +19,16 @@ const DashboardScreen: React.FC = () => {
   const { piHoleConfig } = useAppSelector((state) => state.settings);
   const dispatch = useAppDispatch();
 
-  const {isAuthenticated, data: authStatus, error: authError} = useCheckAuthRequiredQuery(undefined, { selectFromResult: (result) => ({
-    isAuthenticated: result.data?.session?.valid === true,
-    ...result
-  })});
+  const {isAuthenticated, data: authStatus, error: authError} = useTestConnectionQuery({baseUrl: piHoleConfig?.baseUrl??""}, {skip: !piHoleConfig?.baseUrl, 
+    selectFromResult: (result) => ({
+      isAuthenticated: result.data?.session?.valid === true,
+      ...result
+    }
+  )});
+
+  const isAuthRequired = useAppSelector(state => state.settings.authRequired);
+
+  const shouldSkip = !piHoleConfig || isAuthRequired === true;
 
   // RTK Query hooks - these will use the baseUrl from the store
   const {
@@ -31,8 +37,8 @@ const DashboardScreen: React.FC = () => {
     isLoading: isSummaryLoading,
     refetch: refetchSummary,
   } = useGetSummaryQuery(undefined, {
-    skip: !piHoleConfig || !isAuthenticated,
-    pollingInterval: 30000,
+    skip: shouldSkip,
+    pollingInterval: shouldSkip ? 0 : 30000,
   });
 
   const {
@@ -40,14 +46,14 @@ const DashboardScreen: React.FC = () => {
     error: statusError,
     isLoading: isStatusLoading,
   } = useGetBlockingStatusQuery(undefined, {
-    skip: !piHoleConfig || !isAuthenticated,
+    skip: shouldSkip,
   });
 
   const {
     data: recentBlocked,
   } = useGetRecentBlockedQuery(undefined, {
-    skip: !piHoleConfig || !isAuthenticated,
-    pollingInterval: 10000, // Refresh recent blocked more frequently
+    skip: shouldSkip,
+    pollingInterval: shouldSkip ? 0 : 10000, // Refresh recent blocked more frequently
   });
 
   const [enableBlocking, { isLoading: isEnabling }] = useEnableBlockingMutation();
@@ -71,13 +77,6 @@ const DashboardScreen: React.FC = () => {
         await disableBlocking({ duration: 300 }).unwrap(); // Disable for 5 minutes
         Alert.alert('Success', 'Pi-hole blocking has been disabled for 5 minutes');
       }
-      
-      // Refetch data after a short delay
-      setTimeout(() => {
-        if (piHoleConfig && isAuthenticated) {
-          refetchSummary();
-        }
-      }, 1000);
     } catch (error) {
       Alert.alert('Error', 'Failed to toggle blocking status');
       console.error('Toggle error:', error);
@@ -92,7 +91,17 @@ const DashboardScreen: React.FC = () => {
 
   const isLoading = isSummaryLoading || isStatusLoading;
   const isToggleLoading = isEnabling || isDisabling;
-  
+
+  if(isAuthRequired){
+    return (
+       <View style={styles.authWarning}>
+          <Text style={styles.warningText}>
+            Authentication required. Please check your password in Settings.
+          </Text>
+        </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusCard 
@@ -114,23 +123,6 @@ const DashboardScreen: React.FC = () => {
         </>
       )}
 
-      {!isAuthenticated && (
-        <View style={styles.authWarning}>
-          <Text style={styles.warningText}>
-            Authentication required. Please check your password in Settings.
-          </Text>
-        </View>
-      )}
-
-      {(!summaryError) && (
-        <View style={styles.connectionWarning}>
-          <Text style={styles.warningText}>
-            {!piHoleConfig 
-              ? 'Please configure your Pi-hole server in Settings'
-              : 'Failed to connect to Pi-hole. Check your configuration.'}
-          </Text>
-        </View>
-      )}
     </View>
   );
 };

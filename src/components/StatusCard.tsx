@@ -19,15 +19,6 @@ const StatusCard: React.FC<StatusCardProps> = ({ summary, isConnected, isLoading
     );
   }
 
-  if (!isConnected) {
-    return (
-      <View style={[styles.card, styles.errorCard]}>
-        <Text style={styles.errorText}>Not connected to Pi-hole</Text>
-        <Text style={styles.errorSubtext}>Check your settings and connection</Text>
-      </View>
-    );
-  }
-
   if (!summary) {
     return (
       <View style={styles.card}>

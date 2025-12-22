@@ -1,8 +1,9 @@
-import { createApi, fetchBaseQuery, FetchBaseQueryError } from '@reduxjs/toolkit/query/react';
-import { AuthRequest, AuthResponse, BlockingStatus, QueryLogResponse, TestAuthResponse } from '../types';
+import { createApi, FetchBaseQueryError } from '@reduxjs/toolkit/query/react';
+import { AuthRequest, AuthResponse, BlockingStatus, GetSessionsResponse, QueryLogResponse, TestAuthResponse } from '../types';
 import { PiHoleSummary, RecentBlocked, SystemInfo } from '../../types/pihole';
 import { PiHoleVersionResponse } from '../../types/piholeVersionResponse';
 import baseQueryWithReauth from './baseQuery';
+
 
 export const piHoleApi = createApi({
   reducerPath: 'piHoleApi',
@@ -52,31 +53,6 @@ export const piHoleApi = createApi({
         };
       },
     }),
-
-    checkAuthRequired: builder.query<AuthResponse, void>({
-      query: () => '/auth',
-      providesTags: ['Auth'],
-      transformErrorResponse: (error: FetchBaseQueryError) => {
-        if(error.status === 401){
-          return {
-            requiresAuth: true,
-            connected: true,
-            message: `Authentication required: ${error.status} ${JSON.stringify(error.data ?? '{}')}`
-          };
-        }
-
-        if (error.status === 'FETCH_ERROR') {
-          return { requiresAuth: false, connected: false, message: `Network Error: Cannot reach server. ${error.error} | ${error.data}`};
-        }
-        else {
-          return {
-            requiresAuth: null,
-            connected: false,
-            message: `Connection error: ${error.status} ${JSON.stringify(error.data ?? '{}')}`
-          }
-        }
-      }
-    }),
     login: builder.mutation<AuthResponse, AuthRequest>({
       query: (credentials) => ({
         url: '/auth',
@@ -104,7 +80,10 @@ export const piHoleApi = createApi({
       }),
       invalidatesTags: ['Auth']
     }),
-
+    getSessions: builder.query<GetSessionsResponse, void>({
+      query: () => '/auth/sessions',
+      providesTags: ['Auth'],
+    }),
     deleteSession: builder.mutation<void, { sid: string }>({
       query: ({ sid }) => ({
         url: `/auth/session/${sid}?${new URLSearchParams({sid: sid}).toString()}`,
@@ -204,10 +183,13 @@ export const piHoleApi = createApi({
 // Export hooks for usage in components
 export const {
   // Auth
-  useCheckAuthRequiredQuery,
   useLoginMutation,
   useLogoutMutation,
   useDeleteSessionMutation,
+  useGetSessionsQuery,
+  useLazyGetSessionsQuery,
+  useLazyTestConnectionQuery,
+  useTestConnectionQuery,
   
   // Metrics
   useGetSummaryQuery,
@@ -230,6 +212,4 @@ export const {
   useFlushLogsMutation,
   useRestartDNSMutation,
   
-  // Connection
-  useLazyTestConnectionQuery,
 } = piHoleApi;

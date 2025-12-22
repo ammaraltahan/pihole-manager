@@ -52,3 +52,25 @@ export interface BlockingStatus {
   timer: number|null;
   took: number;
 }
+
+export interface SessionInfo {
+  id: string;
+    current_session: boolean;
+    tls:{
+      login: boolean;
+      mixed: boolean;
+    },
+    app: boolean;
+    cli: boolean;
+    login_at: number;
+    last_active: number;
+    valid_until: number;
+    remote_adr: string;
+    user_agent: string;
+    x_forwarded_for: string|null;
+}
+
+export interface GetSessionsResponse {
+  sessions: Array<SessionInfo>;
+  took: number;
+}

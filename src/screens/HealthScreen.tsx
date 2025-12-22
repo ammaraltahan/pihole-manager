@@ -1,46 +1,45 @@
-// src/screens/HealthDashboard.tsx
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
 import { LineChart, PieChart, pieDataItem } from 'react-native-gifted-charts';
 import { useGetSystemInfoQuery } from '../store/api/piholeApi';
 import { useAppSelector } from '../store/hooks';
 
-interface SystemInfo {
-  uptime: number;
-  cpuLoad: number[];   // 1m, 5m, 15m load averages
-  cpuPercent: number;
-  memoryUsed: number;
-  memoryTotal: number;
-  memoryFree: number;
-  memoryUsedPercent: number;
-  memoryAvailable: number;
-  procs: number;
-  ftlCpu: number;
-  ftlMem: number;
-}
 
 export default function HealthDashboard() {
   const isAuthRequired = useAppSelector(state => state.settings.authRequired);
+  console.log('HealthDashboard: isAuthRequired=', isAuthRequired === true);
 
-  const { system } = useGetSystemInfoQuery(undefined, {pollingInterval: 5000, skip: isAuthRequired === false, selectFromResult: (result) => {
-    return{
-      system: {
-        uptime: result.data?.system.uptime ?? 0,
-        cpuLoad: result.data?.system.cpu.load.percent ?? [0,0,0],
-        cpuPercent: result.data?.system.cpu['%cpu'] ?? 0,
-        memoryUsed: result.data?.system.memory.ram.used ?? 0,
-        memoryTotal: result.data?.system.memory.ram.total ?? 0,
-        memoryFree: result.data?.system.memory.ram.free ?? 0,
-        memoryAvailable: result.data?.system.memory.ram.available ?? 0,
-        memoryUsedPercent: result.data?.system.memory.ram['%used'] ?? 0,
-        procs: result.data?.system.procs ?? 0,
-        ftlCpu: result.data?.system.ftl['%cpu'] ?? 0,
-        ftlMem: result.data?.system.ftl['%mem'] ?? 0,
-      }
+  const { system } = useGetSystemInfoQuery(undefined, {
+    pollingInterval: isAuthRequired ? 5000 : 0, 
+    skip: isAuthRequired === true,
+    skipPollingIfUnfocused: true,
+    selectFromResult: (result) => {
+      return{
+        system: {
+          uptime: result.data?.system.uptime ?? 0,
+          cpuLoad: result.data?.system.cpu.load.percent ?? [0,0,0],
+          cpuPercent: result.data?.system.cpu['%cpu'] ?? 0,
+          memoryUsed: result.data?.system.memory.ram.used ?? 0,
+          memoryTotal: result.data?.system.memory.ram.total ?? 0,
+          memoryFree: result.data?.system.memory.ram.free ?? 0,
+          memoryAvailable: result.data?.system.memory.ram.available ?? 0,
+          memoryUsedPercent: result.data?.system.memory.ram['%used'] ?? 0,
+          procs: result.data?.system.procs ?? 0,
+          ftlCpu: result.data?.system.ftl['%cpu'] ?? 0,
+          ftlMem: result.data?.system.ftl['%mem'] ?? 0,
+        }
     }}
   });
 
-  if (!system) return <Text>Loading...</Text>;
+  if(isAuthRequired){
+    return (
+       <View style={styles.authWarning}>
+          <Text style={styles.warningText}>
+            Authentication required. Please check your password in Settings.
+          </Text>
+        </View>
+    );
+  }
 
   const cpuData = system.cpuLoad.map((val, idx) => ({
     value: val,
@@ -128,4 +127,16 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontSize: 18, fontWeight: '600', marginBottom: 8 },
   meta: { fontSize: 14, color: '#555', marginTop: 12, textAlign: 'center', paddingVertical: 8 },
+  authWarning: {
+    backgroundColor: '#ffeaa7',
+    padding: 16,
+    margin: 8,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#fdcb6e',
+  },
+  warningText: {
+    color: '#856404',
+    textAlign: 'center',
+  },
 });
