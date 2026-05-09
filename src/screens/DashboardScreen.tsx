@@ -1,53 +1,45 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, RefreshControl } from 'react-native';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
-import { 
-  useGetSummaryQuery, 
-  useGetBlockingStatusQuery, 
-  useEnableBlockingMutation, 
+import {
+  useGetSummaryQuery,
+  useGetBlockingStatusQuery,
+  useEnableBlockingMutation,
   useDisableBlockingMutation,
-  useGetRecentBlockedQuery 
+  useGetRecentBlockedQuery,
 } from '../store/api/piholeApi';
 import { setConnectionStatus, setAuthenticationStatus } from '../store/slices/settingsSlice';
-import StatusCard from '../components/StatusCard';
-import ToggleButton from '../components/ToggleButton';
+import BlockingHeader from '../components/BlockingHeader';
 import RecentlyBlockedDomains from '../components/RecentlyBlockedDomains';
 
 const DashboardScreen: React.FC = () => {
   const dispatch = useAppDispatch();
   const { piHoleConfig, isConnected } = useAppSelector((state) => state.settings);
-  const { isAuthenticated, sid } = useAppSelector((state) => state.auth);
+  const { isAuthenticated } = useAppSelector((state) => state.auth);
 
-  // RTK Query hooks - these will use the baseUrl from the store
+  const skip = !piHoleConfig || !isConnected || !isAuthenticated;
+
   const {
     data: summary,
     error: summaryError,
     isLoading: isSummaryLoading,
-    refetch: refetchSummary,
-  } = useGetSummaryQuery(undefined, {
-    skip: !piHoleConfig || !isConnected || !isAuthenticated,
-    pollingInterval: 30000,
-  });
+    refetch,
+  } = useGetSummaryQuery(undefined, { skip, pollingInterval: 30000 });
 
   const {
     data: blockingStatus,
     error: statusError,
     isLoading: isStatusLoading,
-  } = useGetBlockingStatusQuery(undefined, {
-    skip: !piHoleConfig || !isConnected || !isAuthenticated,
-  });
+  } = useGetBlockingStatusQuery(undefined, { skip });
 
-  const {
-    data: recentBlocked,
-  } = useGetRecentBlockedQuery(undefined, {
-    skip: !piHoleConfig || !isConnected || !isAuthenticated,
-    pollingInterval: 10000, // Refresh recent blocked more frequently
+  const { data: recentBlocked } = useGetRecentBlockedQuery(undefined, {
+    skip,
+    pollingInterval: 10000,
   });
 
   const [enableBlocking, { isLoading: isEnabling }] = useEnableBlockingMutation();
   const [disableBlocking, { isLoading: isDisabling }] = useDisableBlockingMutation();
 
-  // Handle connection and authentication status
   useEffect(() => {
     if (summaryError || statusError) {
       const error: any = summaryError || statusError;
@@ -62,78 +54,94 @@ const DashboardScreen: React.FC = () => {
     }
   }, [summary, summaryError, statusError, dispatch]);
 
-  const handleToggle = async (enable: boolean) => {
-    if (!piHoleConfig) return;
-
+  const handleEnable = async () => {
     try {
-      if (enable) {
-        await enableBlocking().unwrap();
-        Alert.alert('Success', 'Pi-hole blocking has been enabled');
-      } else {
-        await disableBlocking({ duration: 300 }).unwrap(); // Disable for 5 minutes
-        Alert.alert('Success', 'Pi-hole blocking has been disabled for 5 minutes');
-      }
-      
-      // Refetch data after a short delay
-      setTimeout(() => {
-        if (piHoleConfig && isConnected && isAuthenticated) {
-          refetchSummary();
-        }
-      }, 1000);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to toggle blocking status');
-      console.error('Toggle error:', error);
+      await enableBlocking().unwrap();
+    } catch {
+      Alert.alert('Error', 'Failed to enable blocking');
     }
   };
 
-  const onRefresh = () => {
-    if (piHoleConfig && isConnected && isAuthenticated) {
-      refetchSummary();
+  const handleDisable = async (seconds: number) => {
+    try {
+      await disableBlocking({ duration: seconds || undefined }).unwrap();
+    } catch {
+      Alert.alert('Error', 'Failed to disable blocking');
     }
   };
 
-  const isLoading = isSummaryLoading || isStatusLoading;
-  const isToggleLoading = isEnabling || isDisabling;
+  if (!piHoleConfig) {
+    return (
+      <View style={styles.centeredMessage}>
+        <Text style={styles.messageText}>
+          Configure your Pi-hole server in Settings to get started.
+        </Text>
+      </View>
+    );
+  }
+
+  if (!isConnected || (!isAuthenticated && !isSummaryLoading)) {
+    return (
+      <View style={styles.centeredMessage}>
+        <Text style={styles.messageText}>
+          {!isAuthenticated && isConnected
+            ? 'Authentication required. Check your password in Settings.'
+            : 'Cannot connect to Pi-hole. Check your configuration in Settings.'}
+        </Text>
+      </View>
+    );
+  }
+
+  const isToggleLoading = isEnabling || isDisabling || isStatusLoading;
 
   return (
-    <View style={styles.container}>
-      <StatusCard 
-        summary={summary || undefined} 
-        isConnected={isConnected && isAuthenticated}
-        isLoading={isLoading}
-        recentBlocked={recentBlocked}
+    <ScrollView
+      style={styles.container}
+      refreshControl={
+        <RefreshControl refreshing={isSummaryLoading} onRefresh={refetch} colors={['#2196f3']} />
+      }
+    >
+      <BlockingHeader
+        isEnabled={blockingStatus?.blocking === 'enabled'}
+        isLoading={isToggleLoading}
+        onEnable={handleEnable}
+        onDisable={handleDisable}
       />
-      
-      {isConnected && isAuthenticated && !summaryError && (
-        <>
-          <RecentlyBlockedDomains blockedData={recentBlocked} onRefresh={onRefresh} isLoading={isSummaryLoading} />
 
-          <ToggleButton
-            isEnabled={blockingStatus?.blocking === 'enabled'}
-            onToggle={handleToggle}
-            isLoading={isToggleLoading}
-          />
-        </>
-      )}
-
-      {!isAuthenticated && isConnected && (
-        <View style={styles.authWarning}>
-          <Text style={styles.warningText}>
-            Authentication required. Please check your password in Settings.
-          </Text>
+      {summary && (
+        <View style={styles.statsCard}>
+          <View style={styles.statsRow}>
+            <View style={styles.stat}>
+              <Text style={styles.statValue}>{summary.queries.blocked.toLocaleString()}</Text>
+              <Text style={styles.statLabel}>Blocked</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.stat}>
+              <Text style={styles.statValue}>{summary.queries.total.toLocaleString()}</Text>
+              <Text style={styles.statLabel}>Total Queries</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.stat}>
+              <Text style={styles.statValue}>{summary.queries.percent_blocked.toFixed(1)}%</Text>
+              <Text style={styles.statLabel}>Block Rate</Text>
+            </View>
+          </View>
+          <View style={styles.statsFooter}>
+            <Text style={styles.footerText}>
+              {summary.gravity.domains_being_blocked.toLocaleString()} domains in blocklist
+              {'  ·  '}
+              {summary.clients.active} active client{summary.clients.active !== 1 ? 's' : ''}
+            </Text>
+          </View>
         </View>
       )}
 
-      {(!isConnected || summaryError) && (
-        <View style={styles.connectionWarning}>
-          <Text style={styles.warningText}>
-            {!piHoleConfig 
-              ? 'Please configure your Pi-hole server in Settings'
-              : 'Failed to connect to Pi-hole. Check your configuration.'}
-          </Text>
-        </View>
-      )}
-    </View>
+      <RecentlyBlockedDomains
+        blockedData={recentBlocked}
+        onRefresh={refetch}
+        isLoading={isSummaryLoading}
+      />
+    </ScrollView>
   );
 };
 
@@ -142,83 +150,63 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
-  connectionWarning: {
-    backgroundColor: '#fff3cd',
-    padding: 16,
-    margin: 8,
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: '#ffc107',
+  centeredMessage: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
   },
-  authWarning: {
-    backgroundColor: '#ffeaa7',
-    padding: 16,
-    margin: 8,
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: '#fdcb6e',
-  },
-  warningText: {
-    color: '#856404',
+  messageText: {
+    fontSize: 15,
+    color: '#666',
     textAlign: 'center',
+    lineHeight: 22,
   },
-  recentBlocked: {
+  statsCard: {
     backgroundColor: 'white',
-    padding: 16,
-    margin: 8,
-    borderRadius: 8,
+    marginHorizontal: 12,
+    marginBottom: 12,
+    borderRadius: 16,
+    padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stat: {
     flex: 1,
-    minHeight: 200,
-    maxHeight: 400,
+    alignItems: 'center',
   },
-  recentBlockedTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-    color: '#333',
+  statValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1a1a2e',
   },
-  blockedList: {
+  statLabel: {
+    fontSize: 11,
+    color: '#888',
+    marginTop: 4,
+  },
+  statDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: '#f0f0f0',
+  },
+  statsFooter: {
+    marginTop: 16,
+    paddingTop: 14,
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
-    flex: 1,
-  },
-  blockedItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  blockedDomain: {
-    fontSize: 14,
-    color: '#e74c3c',
-    fontFamily: 'monospace',
-    flex: 1,
-    marginRight: 8,
-  },
-  blockedTimeBadge: {
-    backgroundColor: '#f8f9fa',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    minWidth: 70,
     alignItems: 'center',
   },
-  blockedTimeText: {
+  footerText: {
     fontSize: 12,
-    color: '#6c757d',
-  },
-  emptyText: {
-    textAlign: 'center',
-    color: '#666',
-    paddingVertical: 20,
-    fontStyle: 'italic',
+    color: '#aaa',
   },
 });
 

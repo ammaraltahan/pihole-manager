@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { Provider } from 'react-redux';
 import { store } from './src/store';
@@ -9,12 +10,34 @@ import SettingsScreen from './src/screens/SettingsScreen';
 import HealthScreen from './src/screens/HealthScreen';
 
 export type RootTabParamList = {
-  Dashboard: undefined;
-  Health: undefined;
+  Home: undefined;
   Settings: undefined;
 };
 
+export type SettingsStackParamList = {
+  SettingsMain: undefined;
+  Health: undefined;
+};
+
 const Tab = createBottomTabNavigator<RootTabParamList>();
+const SettingsStack = createStackNavigator<SettingsStackParamList>();
+
+function SettingsNavigator() {
+  return (
+    <SettingsStack.Navigator>
+      <SettingsStack.Screen
+        name="SettingsMain"
+        component={SettingsScreen}
+        options={{ title: 'Settings' }}
+      />
+      <SettingsStack.Screen
+        name="Health"
+        component={HealthScreen}
+        options={{ title: 'System Health' }}
+      />
+    </SettingsStack.Navigator>
+  );
+}
 
 export default function App() {
   return (
@@ -23,38 +46,25 @@ export default function App() {
         <Tab.Navigator
           screenOptions={({ route }) => ({
             tabBarIcon: ({ focused, color, size }) => {
-              let iconName: keyof typeof Ionicons.glyphMap;
-
-              if (route.name === 'Dashboard') {
-                iconName = focused ? 'speedometer' : 'speedometer-outline';
-              } else if (route.name === 'Health') {
-                iconName = focused ? 'analytics' : 'analytics-outline';
-              } else if (route.name === 'Settings') {
-                iconName = focused ? 'settings' : 'settings-outline';
-              } else {
-                iconName = 'help';
-              }
-
+              const iconName: keyof typeof Ionicons.glyphMap =
+                route.name === 'Home'
+                  ? focused ? 'home' : 'home-outline'
+                  : focused ? 'settings' : 'settings-outline';
               return <Ionicons name={iconName} size={size} color={color} />;
             },
             tabBarActiveTintColor: '#2196f3',
             tabBarInactiveTintColor: 'gray',
           })}
         >
-          <Tab.Screen 
-            name="Dashboard" 
+          <Tab.Screen
+            name="Home"
             component={DashboardScreen}
-            options={{ title: 'Pi-hole Dashboard' }}
+            options={{ title: 'Pi-hole' }}
           />
           <Tab.Screen
-            name="Health"
-            component={HealthScreen}
-            options={{ title: 'Health' }}
-          />
-          <Tab.Screen 
-            name="Settings" 
-            component={SettingsScreen}
-            options={{ title: 'Settings' }}
+            name="Settings"
+            component={SettingsNavigator}
+            options={{ headerShown: false }}
           />
         </Tab.Navigator>
       </NavigationContainer>
