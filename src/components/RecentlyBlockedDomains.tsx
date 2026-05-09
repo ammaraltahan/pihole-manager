@@ -1,40 +1,30 @@
 import React from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 
 interface RecentlyBlockedDomainsProps {
   blockedData?: {
     blocked: string[];
     took: number;
   };
-  onRefresh?: () => void;
-  isLoading?: boolean;
 }
 
-const RecentlyBlockedDomains: React.FC<RecentlyBlockedDomainsProps> = ({ blockedData, onRefresh, isLoading }) => {
+const RecentlyBlockedDomains: React.FC<RecentlyBlockedDomainsProps> = ({ blockedData }) => {
   const domains = blockedData?.blocked ?? [];
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Recently Blocked</Text>
-      <FlatList
-        data={domains}
-        keyExtractor={(item, index) => `${item}-${index}`}
-        ListEmptyComponent={<Text style={styles.emptyText}>No domains blocked yet</Text>}
-        refreshControl={
-          <RefreshControl
-            refreshing={isLoading ?? false}
-            onRefresh={onRefresh}
-            colors={['#2196f3']}
-          />
-        }
-        renderItem={({ item }) => (
-          <View style={styles.blockedItem}>
+      {domains.length === 0 ? (
+        <Text style={styles.emptyText}>No domains blocked yet</Text>
+      ) : (
+        domains.map((domain, index) => (
+          <View key={`${domain}-${index}`} style={styles.blockedItem}>
             <Text style={styles.blockedDomain} numberOfLines={1} ellipsizeMode="middle">
-              {item}
+              {domain}
             </Text>
           </View>
-        )}
-      />
+        ))
+      )}
     </View>
   );
 };
@@ -51,7 +41,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 4,
-    minHeight: 200,
   },
   title: {
     fontSize: 16,

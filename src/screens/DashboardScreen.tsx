@@ -143,11 +143,7 @@ const DashboardScreen: React.FC = () => {
         </View>
       )}
 
-      <RecentlyBlockedDomains
-        blockedData={recentBlocked}
-        onRefresh={refetch}
-        isLoading={isSummaryLoading}
-      />
+      <RecentlyBlockedDomains blockedData={recentBlocked} />
     </ScrollView>
   );
 };
