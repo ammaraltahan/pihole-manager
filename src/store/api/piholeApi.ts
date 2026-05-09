@@ -52,7 +52,7 @@ export const piHoleApi = createApi({
     }),
 
     getRecentBlocked: builder.query<RecentBlocked, void>({
-      query: () => '/stats/recent_blocked',
+      query: () => ({ url: '/stats/recent_blocked', params: { count: 25 } }),
     }),
 
     getTopItems: builder.query<any, { type: 'clients' | 'domains' }>({

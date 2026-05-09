@@ -65,8 +65,15 @@ const DashboardScreen: React.FC = () => {
   const handleDisable = async (seconds: number) => {
     try {
       await disableBlocking({ duration: seconds || undefined }).unwrap();
-    } catch {
-      Alert.alert('Error', 'Failed to disable blocking');
+    } catch (err: any) {
+      if (err?.status === 403) {
+        Alert.alert(
+          'Permission Denied',
+          'Your Pi-hole has "Allow destructive API calls" disabled. Enable it under Settings → API in the Pi-hole web interface.'
+        );
+      } else {
+        Alert.alert('Error', 'Failed to disable blocking');
+      }
     }
   };
 
