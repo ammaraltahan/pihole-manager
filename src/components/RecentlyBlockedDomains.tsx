@@ -9,8 +9,24 @@ interface RecentlyBlockedDomainsProps {
   };
 }
 
+interface DomainEntry {
+  domain: string;
+  count: number;
+}
+
+function toDedupedList(domains: string[]): DomainEntry[] {
+  const counts: Record<string, number> = {};
+  for (const d of domains) {
+    counts[d] = (counts[d] ?? 0) + 1;
+  }
+  return Object.entries(counts)
+    .map(([domain, count]) => ({ domain, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
 const RecentlyBlockedDomains: React.FC<RecentlyBlockedDomainsProps> = ({ blockedData }) => {
-  const domains = blockedData?.blocked ?? [];
+  const raw = blockedData?.blocked ?? [];
+  const entries = toDedupedList(raw);
   const [addToAllowlist] = useAddToAllowlistMutation();
   const [pendingDomain, setPendingDomain] = useState<string | null>(null);
 
@@ -20,10 +36,7 @@ const RecentlyBlockedDomains: React.FC<RecentlyBlockedDomainsProps> = ({ blocked
       `Add "${domain}" to your allowlist?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Allow',
-          onPress: () => confirmAllow(domain),
-        },
+        { text: 'Allow', onPress: () => confirmAllow(domain) },
       ]
     );
   };
@@ -50,19 +63,22 @@ const RecentlyBlockedDomains: React.FC<RecentlyBlockedDomainsProps> = ({ blocked
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Recently Blocked</Text>
-      {domains.length === 0 ? (
+      {entries.length === 0 ? (
         <Text style={styles.emptyText}>No domains blocked yet</Text>
       ) : (
-        domains.map((domain, index) => {
+        entries.map(({ domain, count }) => {
           const isLoading = pendingDomain === domain;
           return (
             <TouchableOpacity
-              key={`${domain}-${index}`}
+              key={domain}
               style={styles.row}
               onPress={() => handleDomainPress(domain)}
               disabled={isLoading}
               activeOpacity={0.6}
             >
+              <View style={styles.countBadge}>
+                <Text style={styles.countText}>{count}</Text>
+              </View>
               <Text style={styles.domain} numberOfLines={1} ellipsizeMode="middle">
                 {domain}
               </Text>
@@ -101,17 +117,30 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingVertical: 11,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+    gap: 10,
+  },
+  countBadge: {
+    backgroundColor: '#f0f4ff',
+    borderRadius: 10,
+    minWidth: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  countText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#3b5bdb',
   },
   domain: {
     fontSize: 13,
     color: '#e74c3c',
     fontFamily: 'monospace',
     flex: 1,
-    marginRight: 12,
   },
   allowHint: {
     fontSize: 12,
