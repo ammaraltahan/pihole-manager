@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useAddToAllowlistMutation } from '../store/api/piholeApi';
 
@@ -7,7 +7,6 @@ interface RecentlyBlockedDomainsProps {
     blocked: string[];
     took: number;
   };
-  lastFetched?: number;
 }
 
 interface DomainEntry {
@@ -15,27 +14,21 @@ interface DomainEntry {
   count: number;
 }
 
-const RecentlyBlockedDomains: React.FC<RecentlyBlockedDomainsProps> = ({ blockedData, lastFetched }) => {
-  const [counts, setCounts] = useState<Record<string, number>>({});
-  const [addToAllowlist] = useAddToAllowlistMutation();
-  const [pendingDomain, setPendingDomain] = useState<string | null>(null);
-
-  // Runs on every completed fetch (lastFetched changes even when data is structurally identical)
-  useEffect(() => {
-    const domains = blockedData?.blocked;
-    if (!domains?.length) return;
-    setCounts(prev => {
-      const next = { ...prev };
-      for (const d of domains) {
-        next[d] = (next[d] ?? 0) + 1;
-      }
-      return next;
-    });
-  }, [lastFetched]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const entries: DomainEntry[] = Object.entries(counts)
+function toDedupedList(domains: string[]): DomainEntry[] {
+  const counts: Record<string, number> = {};
+  for (const d of domains) {
+    counts[d] = (counts[d] ?? 0) + 1;
+  }
+  return Object.entries(counts)
     .map(([domain, count]) => ({ domain, count }))
     .sort((a, b) => b.count - a.count);
+}
+
+const RecentlyBlockedDomains: React.FC<RecentlyBlockedDomainsProps> = ({ blockedData }) => {
+  const raw = blockedData?.blocked ?? [];
+  const entries = toDedupedList(raw);
+  const [addToAllowlist] = useAddToAllowlistMutation();
+  const [pendingDomain, setPendingDomain] = useState<string | null>(null);
 
   const handleDomainPress = (domain: string) => {
     Alert.alert(

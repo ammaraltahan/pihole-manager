@@ -32,10 +32,7 @@ const DashboardScreen: React.FC = () => {
     isLoading: isStatusLoading,
   } = useGetBlockingStatusQuery(undefined, { skip });
 
-  const {
-    data: recentBlocked,
-    fulfilledTimeStamp: recentBlockedFetchedAt,
-  } = useGetRecentBlockedQuery(undefined, {
+  const { data: recentBlocked } = useGetRecentBlockedQuery(undefined, {
     skip,
     pollingInterval: 10000,
   });
@@ -146,7 +143,7 @@ const DashboardScreen: React.FC = () => {
         </View>
       )}
 
-      <RecentlyBlockedDomains blockedData={recentBlocked} lastFetched={recentBlockedFetchedAt} />
+      <RecentlyBlockedDomains blockedData={recentBlocked} />
     </ScrollView>
   );
 };
