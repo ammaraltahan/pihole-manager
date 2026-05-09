@@ -113,6 +113,15 @@ export const piHoleApi = createApi({
       query: () => '/info/system',
     }),
 
+    // Domain list management
+    addToAllowlist: builder.mutation<void, { domain: string; comment?: string }>({
+      query: ({ domain, comment = '' }) => ({
+        url: '/domains/allow/exact',
+        method: 'POST',
+        body: { domain, comment, groups: [0], enabled: true },
+      }),
+    }),
+
     // Actions
     flushLogs: builder.mutation<void, void>({
       query: () => ({
@@ -192,6 +201,9 @@ export const {
   useGetVersionQuery,
   useGetSystemInfoQuery,
   
+  // Domain lists
+  useAddToAllowlistMutation,
+
   // Actions
   useFlushLogsMutation,
   useRestartDNSMutation,
