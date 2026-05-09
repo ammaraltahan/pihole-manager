@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Alert, 
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
   ScrollView,
   ActivityIndicator,
-  Switch 
+  Switch,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { SettingsStackParamList } from '../../App';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { 
   setPiHoleConfig, 
@@ -27,6 +30,7 @@ import {
 const PI_HOLE_DEFAULT_URL = 'http://pi.hole';
 
 const SettingsScreen: React.FC = () => {
+  const navigation = useNavigation<StackNavigationProp<SettingsStackParamList>>();
   const dispatch = useAppDispatch();
   const { piHoleConfig, isConnected } = useAppSelector((state) => state.settings);
   const { isAuthenticated, requiresAuth } = useAppSelector((state) => state.auth);
@@ -168,6 +172,14 @@ const SettingsScreen: React.FC = () => {
 
   return (
     <ScrollView style={styles.container}>
+      <TouchableOpacity style={styles.healthRow} onPress={() => navigation.navigate('Health')}>
+        <View style={styles.healthRowLeft}>
+          <Text style={styles.healthRowTitle}>System Health</Text>
+          <Text style={styles.healthRowSub}>CPU, memory, uptime</Text>
+        </View>
+        <Text style={styles.healthRowChevron}>›</Text>
+      </TouchableOpacity>
+
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Pi-hole Configuration</Text>
         
@@ -289,6 +301,40 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  healthRow: {
+    backgroundColor: 'white',
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 4,
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  healthRowLeft: {
+    gap: 2,
+  },
+  healthRowTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  healthRowSub: {
+    fontSize: 12,
+    color: '#999',
+  },
+  healthRowChevron: {
+    fontSize: 22,
+    color: '#ccc',
+    lineHeight: 26,
   },
   section: {
     backgroundColor: 'white',
