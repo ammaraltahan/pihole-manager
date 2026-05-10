@@ -35,7 +35,7 @@ const SettingsScreen: React.FC = () => {
   const { piHoleConfig, isConnected } = useAppSelector((state) => state.settings);
   const { isAuthenticated } = useAppSelector((state) => state.auth);
 
-  const [baseUrl, setBaseUrl] = useState(piHoleConfig?.baseUrl ?? '');
+  const [baseUrl, setBaseUrl] = useState(piHoleConfig?.baseUrl ?? 'http://');
   const [password, setPassword] = useState(piHoleConfig?.password ?? '');
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
 
@@ -44,7 +44,7 @@ const SettingsScreen: React.FC = () => {
 
   const fullyConnected = isConnected && isAuthenticated;
   const isBusy = status.kind === 'connecting';
-  const canConnect = baseUrl.trim().length > 0 && !isBusy;
+  const canConnect = baseUrl.trim().length > 0 && !isBusy && !fullyConnected;
 
   const handleConnect = async () => {
     const url = baseUrl.trim();
@@ -104,7 +104,6 @@ const SettingsScreen: React.FC = () => {
   };
 
   const handleDisconnect = () => {
-    setBaseUrl('');
     setPassword('');
     dispatch(clearPiHoleConfig());
     dispatch(clearAuth());
