@@ -44,7 +44,10 @@ const SettingsScreen: React.FC = () => {
 
   const fullyConnected = isConnected && isAuthenticated;
   const isBusy = status.kind === 'connecting';
-  const canConnect = baseUrl.trim().length > 0 && !isBusy && !fullyConnected;
+  const inputsChanged =
+    baseUrl.trim() !== (piHoleConfig?.baseUrl ?? '') ||
+    password !== (piHoleConfig?.password ?? '');
+  const canConnect = baseUrl.trim().length > 0 && !isBusy && (!fullyConnected || inputsChanged);
 
   const handleConnect = async () => {
     const url = baseUrl.trim();
