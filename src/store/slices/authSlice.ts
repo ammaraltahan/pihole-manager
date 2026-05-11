@@ -4,7 +4,7 @@ import { AuthState } from '../types';
 const initialState: AuthState = {
   isAuthenticated: false,
   requiresAuth: true, // Assume auth is required until we check
-  sid: undefined,
+  sid: undefined
 };
 
 const authSlice = createSlice({
@@ -22,8 +22,11 @@ const authSlice = createSlice({
       state.isAuthenticated = false;
       state.sid = undefined;
     },
+    setAuthenticationStatus: (state, action: PayloadAction<boolean>) => {
+      state.isAuthenticated = action.payload;
+    },
   },
 });
 
-export const { setAuthentication, setAuthRequired, clearAuth } = authSlice.actions;
+export const { setAuthentication, setAuthRequired, clearAuth, setAuthenticationStatus } = authSlice.actions;
 export default authSlice.reducer;

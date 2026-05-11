@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -15,11 +15,10 @@ import { useAppSelector, useAppDispatch } from '../store/hooks';
 import {
   setPiHoleConfig,
   clearPiHoleConfig,
-  setConnectionStatus,
-  setAuthenticationStatus,
 } from '../store/slices/settingsSlice';
-import { setAuthRequired, setAuthentication, clearAuth } from '../store/slices/authSlice';
+import { setAuthRequired, setAuthentication, clearAuth, setAuthenticationStatus } from '../store/slices/authSlice';
 import {
+  useCheckAuthRequiredQuery,
   useLazyTestConnectionQuery,
   useLoginMutation,
 } from '../store/api/piholeApi';
@@ -32,7 +31,7 @@ type Status =
 const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<SettingsStackParamList>>();
   const dispatch = useAppDispatch();
-  const { piHoleConfig, isConnected } = useAppSelector((state) => state.settings);
+  const { piHoleConfig } = useAppSelector((state) => state.settings);
   const { isAuthenticated } = useAppSelector((state) => state.auth);
 
   const [baseUrl, setBaseUrl] = useState(piHoleConfig?.baseUrl ?? 'http://');
@@ -42,13 +41,30 @@ const SettingsScreen: React.FC = () => {
   const [testConnection] = useLazyTestConnectionQuery();
   const [login] = useLoginMutation();
 
-  const fullyConnected = isConnected && isAuthenticated;
+  const sid = password.trim() ? password : piHoleConfig?.password ?? '';
+  const {data: authRequiredData, isError, error, status: authStatus} = useCheckAuthRequiredQuery({ baseUrl, sid }, {
+    skip: !sid && !isAuthenticated
+  });
+
+  useEffect(() => {
+   if(authRequiredData && !isError) {
+     dispatch(setAuthRequired(!authRequiredData?.session?.valid));
+     dispatch(setAuthentication({
+       isAuthenticated: !authRequiredData?.session?.valid,
+       sid: authRequiredData.session?.sid
+     }));
+   }
+  }, [authRequiredData, dispatch]);
+
+  console.log('Auth required check', { authRequiredData, isError, authStatus });
+
+  const fullyConnected = isAuthenticated;
   const isBusy = status.kind === 'connecting';
   const inputsChanged =
     baseUrl.trim() !== (piHoleConfig?.baseUrl ?? '') ||
     password !== (piHoleConfig?.password ?? '');
-  const canConnect = baseUrl.trim().length > 0 && !isBusy && (!fullyConnected || inputsChanged);
 
+  console.log('Render SettingsScreen', isAuthenticated, status);
   const handleConnect = async () => {
     const url = baseUrl.trim();
     if (!url) return;
@@ -58,17 +74,18 @@ const SettingsScreen: React.FC = () => {
     try {
       const result = await testConnection({ baseUrl: url }).unwrap();
 
+      console.log('Test connection result', result);
+
       if (!result?.connected) {
         setStatus({ kind: 'error', message: result?.message ?? 'Cannot reach Pi-hole server' });
-        dispatch(setConnectionStatus(false));
         dispatch(setAuthenticationStatus(false));
         return;
       }
 
-      dispatch(setConnectionStatus(true));
       dispatch(setPiHoleConfig({ baseUrl: url, password: password.trim() || undefined }));
 
       if (!result.requiresAuth) {
+        console.log('No authentication required by Pi-hole');
         dispatch(setAuthRequired(false));
         dispatch(setAuthenticationStatus(true));
         setStatus({ kind: 'idle' });
@@ -101,7 +118,6 @@ const SettingsScreen: React.FC = () => {
         kind: 'error',
         message: err?.message ?? 'Connection failed',
       });
-      dispatch(setConnectionStatus(false));
       dispatch(setAuthenticationStatus(false));
     }
   };
@@ -150,7 +166,7 @@ const SettingsScreen: React.FC = () => {
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
-            editable={!isBusy}
+            editable={!isBusy && !isAuthenticated}
           />
         </View>
 
@@ -165,14 +181,14 @@ const SettingsScreen: React.FC = () => {
             secureTextEntry
             autoCapitalize="none"
             autoCorrect={false}
-            editable={!isBusy}
+            editable={!isBusy && !isAuthenticated}
           />
         </View>
 
         <TouchableOpacity
-          style={[styles.connectButton, !canConnect && styles.connectButtonDisabled]}
+          style={[styles.connectButton, isAuthenticated && styles.connectButtonDisabled]}
           onPress={handleConnect}
-          disabled={!canConnect}
+          disabled={isBusy || isAuthenticated}
           activeOpacity={0.8}
         >
           {isBusy ? (

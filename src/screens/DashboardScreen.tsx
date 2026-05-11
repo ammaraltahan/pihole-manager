@@ -8,16 +8,15 @@ import {
   useDisableBlockingMutation,
   useGetRecentBlockedQuery,
 } from '../store/api/piholeApi';
-import { setConnectionStatus, setAuthenticationStatus } from '../store/slices/settingsSlice';
 import BlockingHeader from '../components/BlockingHeader';
 import RecentlyBlockedDomains from '../components/RecentlyBlockedDomains';
 
 const DashboardScreen: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { piHoleConfig, isConnected } = useAppSelector((state) => state.settings);
+  const { piHoleConfig } = useAppSelector((state) => state.settings);
   const { isAuthenticated } = useAppSelector((state) => state.auth);
 
-  const skip = !piHoleConfig || !isConnected || !isAuthenticated;
+  const skip = !piHoleConfig || !isAuthenticated;
 
   const {
     data: summary,
@@ -39,20 +38,6 @@ const DashboardScreen: React.FC = () => {
 
   const [enableBlocking, { isLoading: isEnabling }] = useEnableBlockingMutation();
   const [disableBlocking, { isLoading: isDisabling }] = useDisableBlockingMutation();
-
-  useEffect(() => {
-    if (summaryError || statusError) {
-      const error: any = summaryError || statusError;
-      if (error.status === 401) {
-        dispatch(setAuthenticationStatus(false));
-      } else {
-        dispatch(setConnectionStatus(false));
-      }
-    } else if (summary) {
-      dispatch(setConnectionStatus(true));
-      dispatch(setAuthenticationStatus(true));
-    }
-  }, [summary, summaryError, statusError, dispatch]);
 
   const handleEnable = async () => {
     try {
@@ -87,11 +72,11 @@ const DashboardScreen: React.FC = () => {
     );
   }
 
-  if (!isConnected || (!isAuthenticated && !isSummaryLoading)) {
+  if ((!isAuthenticated && !isSummaryLoading)) {
     return (
       <View style={styles.centeredMessage}>
         <Text style={styles.messageText}>
-          {!isAuthenticated && isConnected
+          {!isAuthenticated
             ? 'Authentication required. Check your password in Settings.'
             : 'Cannot connect to Pi-hole. Check your configuration in Settings.'}
         </Text>
