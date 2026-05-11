@@ -3,7 +3,6 @@ import { SettingsState, PiHoleConfig } from '../types';
 
 const initialState: SettingsState = {
   piHoleConfig: null,
-  isConnected: false,
   isAuthenticated: false,
 };
 
@@ -16,25 +15,13 @@ const settingsSlice = createSlice({
     },
     clearPiHoleConfig: (state) => {
       state.piHoleConfig = null;
-      state.isConnected = false;
       state.isAuthenticated = false;
-    },
-    setConnectionStatus: (state, action: PayloadAction<boolean>) => {
-      state.isConnected = action.payload;
-      if (action.payload) {
-        state.lastConnected = new Date().toISOString();
-      }
-    },
-    setAuthenticationStatus: (state, action: PayloadAction<boolean>) => {
-      state.isAuthenticated = action.payload;
-    },
+    }
   },
 });
 
 export const { 
   setPiHoleConfig, 
   clearPiHoleConfig, 
-  setConnectionStatus,
-  setAuthenticationStatus 
 } = settingsSlice.actions;
 export default settingsSlice.reducer;

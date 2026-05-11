@@ -1,19 +1,27 @@
-import { createApi, fetchBaseQuery, FetchBaseQueryError } from '@reduxjs/toolkit/query/react';
+import { createApi, FetchBaseQueryError } from '@reduxjs/toolkit/query/react';
 import { AuthRequest, AuthResponse, BlockingStatus, QueryLogResponse } from '../types';
 import { PiHoleSummary, RecentBlocked, SystemInfo } from '../../types/pihole';
-import baseQueryWithReauth from './baseQuery';
+import {customBaseQuery} from './baseQuery';
 
 export const piHoleApi = createApi({
   reducerPath: 'piHoleApi',
   tagTypes: ['Summary', 'Status', 'Queries', 'Auth'],
-  baseQuery: baseQueryWithReauth,
+  baseQuery: customBaseQuery,
   endpoints: (builder) => ({
     // Authentication endpoints
-    checkAuthRequired: builder.query<AuthResponse, void>({
-      query: () => '/auth',
+    checkAuthRequired: builder.query<AuthResponse, {baseUrl: string, sid: string}>({
+      query: (args) => {
+        return {
+          url: `${args.baseUrl}/api/auth`,
+          method: 'GET',
+          headers: {
+            'accept': 'application/json',
+            'sid': args.sid
+          }
+        };
+      },
       providesTags: ['Auth'],
     }),
-
    // Update login with better error handling
     login: builder.mutation<AuthResponse, AuthRequest>({
       query: (credentials) => ({
@@ -181,6 +189,7 @@ export const piHoleApi = createApi({
 export const {
   // Auth
   useCheckAuthRequiredQuery,
+  useLazyCheckAuthRequiredQuery,
   useLoginMutation,
   useLogoutMutation,
   
