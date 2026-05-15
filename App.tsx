@@ -4,7 +4,8 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { Provider } from 'react-redux';
-import { store } from './src/store';
+import { PersistGate } from 'redux-persist/integration/react';
+import { store, persistor } from './src/store';
 import DashboardScreen from './src/screens/DashboardScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import HealthScreen from './src/screens/HealthScreen';
@@ -42,6 +43,7 @@ function SettingsNavigator() {
 export default function App() {
   return (
     <Provider store={store}>
+      <PersistGate loading={null} persistor={persistor}>
       <NavigationContainer>
         <Tab.Navigator
           screenOptions={({ route }) => ({
@@ -68,6 +70,7 @@ export default function App() {
           />
         </Tab.Navigator>
       </NavigationContainer>
+      </PersistGate>
     </Provider>
   );
 }

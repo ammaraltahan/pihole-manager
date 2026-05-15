@@ -13,12 +13,14 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { SettingsStackParamList } from '../../App';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import {
-  setPiHoleConfig,
-  clearPiHoleConfig,
-  setConnectionStatus,
-  setAuthenticationStatus,
-} from '../store/slices/settingsSlice';
-import { setAuthRequired, setAuthentication, clearAuth } from '../store/slices/authSlice';
+  addServer,
+  updateServer,
+  setServerSession,
+  clearServerSession,
+  selectActiveServer,
+  selectActiveSession,
+} from '../store/slices/serversSlice';
+import { Server } from '../store/types';
 import {
   useLazyTestConnectionQuery,
   useLoginMutation,
@@ -29,24 +31,34 @@ type Status =
   | { kind: 'connecting' }
   | { kind: 'error'; message: string };
 
+function nameFromUrl(url: string): string {
+  try { return new URL(url).hostname; } catch { return url; }
+}
+
+function genId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
 const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<SettingsStackParamList>>();
   const dispatch = useAppDispatch();
-  const { piHoleConfig, isConnected } = useAppSelector((state) => state.settings);
-  const { isAuthenticated } = useAppSelector((state) => state.auth);
+  const activeServer = useAppSelector(selectActiveServer);
+  const activeSession = useAppSelector(selectActiveSession);
 
-  const [baseUrl, setBaseUrl] = useState(piHoleConfig?.baseUrl ?? 'http://');
-  const [password, setPassword] = useState(piHoleConfig?.password ?? '');
+  const [baseUrl, setBaseUrl] = useState(activeServer?.baseUrl ?? 'http://');
+  const [password, setPassword] = useState(activeServer?.password ?? '');
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
 
   const [testConnection] = useLazyTestConnectionQuery();
   const [login] = useLoginMutation();
 
+  const isConnected = activeSession.isConnected;
+  const isAuthenticated = activeSession.isAuthenticated;
   const fullyConnected = isConnected && isAuthenticated;
   const isBusy = status.kind === 'connecting';
   const inputsChanged =
-    baseUrl.trim() !== (piHoleConfig?.baseUrl ?? '') ||
-    password !== (piHoleConfig?.password ?? '');
+    baseUrl.trim() !== (activeServer?.baseUrl ?? '') ||
+    password !== (activeServer?.password ?? '');
   const canConnect = baseUrl.trim().length > 0 && !isBusy && (!fullyConnected || inputsChanged);
 
   const handleConnect = async () => {
@@ -60,56 +72,62 @@ const SettingsScreen: React.FC = () => {
 
       if (!result?.connected) {
         setStatus({ kind: 'error', message: result?.message ?? 'Cannot reach Pi-hole server' });
-        dispatch(setConnectionStatus(false));
-        dispatch(setAuthenticationStatus(false));
+        if (activeServer) {
+          dispatch(setServerSession({ id: activeServer.id, session: { isConnected: false, isAuthenticated: false } }));
+        }
         return;
       }
 
-      dispatch(setConnectionStatus(true));
-      dispatch(setPiHoleConfig({ baseUrl: url, password: password.trim() || undefined }));
+      // Upsert the server profile
+      const serverId = activeServer?.id ?? genId();
+      const server: Server = {
+        id: serverId,
+        name: nameFromUrl(url),
+        baseUrl: url,
+        password: password.trim() || undefined,
+      };
+      if (activeServer) {
+        dispatch(updateServer(server));
+      } else {
+        dispatch(addServer(server));
+      }
+
+      dispatch(setServerSession({ id: serverId, session: { isConnected: true } }));
 
       if (!result.requiresAuth) {
-        dispatch(setAuthRequired(false));
-        dispatch(setAuthenticationStatus(true));
+        dispatch(setServerSession({ id: serverId, session: { isAuthenticated: true, requiresAuth: false, sid: undefined } }));
         setStatus({ kind: 'idle' });
         return;
       }
 
-      dispatch(setAuthRequired(true));
+      dispatch(setServerSession({ id: serverId, session: { requiresAuth: true } }));
 
       if (!password.trim()) {
         setStatus({ kind: 'error', message: 'Password required for this Pi-hole' });
-        dispatch(setAuthenticationStatus(false));
+        dispatch(setServerSession({ id: serverId, session: { isAuthenticated: false } }));
         return;
       }
 
       const loginResult = await login({ password: password.trim() }).unwrap();
 
       if (loginResult.session?.valid && loginResult.session?.sid) {
-        dispatch(setAuthentication({ isAuthenticated: true, sid: loginResult.session.sid }));
-        dispatch(setAuthenticationStatus(true));
+        dispatch(setServerSession({ id: serverId, session: { isAuthenticated: true, sid: loginResult.session.sid } }));
         setStatus({ kind: 'idle' });
       } else {
-        setStatus({
-          kind: 'error',
-          message: loginResult.session?.message ?? 'Incorrect password',
-        });
-        dispatch(setAuthenticationStatus(false));
+        setStatus({ kind: 'error', message: loginResult.session?.message ?? 'Incorrect password' });
+        dispatch(setServerSession({ id: serverId, session: { isAuthenticated: false } }));
       }
     } catch (err: any) {
-      setStatus({
-        kind: 'error',
-        message: err?.message ?? 'Connection failed',
-      });
-      dispatch(setConnectionStatus(false));
-      dispatch(setAuthenticationStatus(false));
+      setStatus({ kind: 'error', message: err?.message ?? 'Connection failed' });
+      if (activeServer) {
+        dispatch(setServerSession({ id: activeServer.id, session: { isConnected: false, isAuthenticated: false } }));
+      }
     }
   };
 
   const handleDisconnect = () => {
     setPassword('');
-    dispatch(clearPiHoleConfig());
-    dispatch(clearAuth());
+    if (activeServer) dispatch(clearServerSession(activeServer.id));
     setStatus({ kind: 'idle' });
   };
 
@@ -187,7 +205,7 @@ const SettingsScreen: React.FC = () => {
         )}
 
         {fullyConnected && status.kind !== 'error' && (
-          <Text style={styles.statusSuccess}>Connected to {piHoleConfig?.baseUrl}</Text>
+          <Text style={styles.statusSuccess}>Connected to {activeServer?.baseUrl}</Text>
         )}
 
         {fullyConnected && (

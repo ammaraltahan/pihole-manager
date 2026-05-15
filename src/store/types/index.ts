@@ -1,20 +1,23 @@
-export interface PiHoleConfig {
+// Server profile — persisted
+export interface Server {
+  id: string;
+  name: string;       // auto-derived from baseUrl hostname
   baseUrl: string;
   password?: string;
-  sid?: string; // Session ID for authenticated requests
 }
 
-export interface SettingsState {
-  piHoleConfig: PiHoleConfig | null;
+// Per-server runtime connection state — NOT persisted
+export interface ServerSession {
   isConnected: boolean;
   isAuthenticated: boolean;
-  lastConnected?: string;
+  sid?: string;
+  requiresAuth: boolean;
 }
 
-export interface AuthState {
-  isAuthenticated: boolean;
-  sid: string | null | undefined;
-  requiresAuth: boolean;
+export interface ServersState {
+  servers: Server[];
+  activeServerId: string | null;
+  sessions: Record<string, ServerSession>;
 }
 
 export interface QueryLogItem {
@@ -49,6 +52,6 @@ export interface AuthRequest {
 
 export interface BlockingStatus {
   blocking: 'enabled' | 'disabled' | 'failed' | 'unknown';
-  timer: number|null;
+  timer: number | null;
   took: number;
 }

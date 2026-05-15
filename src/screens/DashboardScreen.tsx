@@ -2,22 +2,28 @@ import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, RefreshControl } from 'react-native';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import {
+  selectActiveServer,
+  selectActiveSession,
+  setServerSession,
+} from '../store/slices/serversSlice';
+import {
   useGetSummaryQuery,
   useGetBlockingStatusQuery,
   useEnableBlockingMutation,
   useDisableBlockingMutation,
   useGetRecentBlockedQuery,
 } from '../store/api/piholeApi';
-import { setConnectionStatus, setAuthenticationStatus } from '../store/slices/settingsSlice';
 import BlockingHeader from '../components/BlockingHeader';
 import RecentlyBlockedDomains from '../components/RecentlyBlockedDomains';
 
 const DashboardScreen: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { piHoleConfig, isConnected } = useAppSelector((state) => state.settings);
-  const { isAuthenticated } = useAppSelector((state) => state.auth);
+  const activeServer = useAppSelector(selectActiveServer);
+  const activeSession = useAppSelector(selectActiveSession);
 
-  const skip = !piHoleConfig || !isConnected || !isAuthenticated;
+  const isConnected = activeSession.isConnected;
+  const isAuthenticated = activeSession.isAuthenticated;
+  const skip = !activeServer || !isConnected || !isAuthenticated;
 
   const {
     data: summary,
@@ -41,18 +47,18 @@ const DashboardScreen: React.FC = () => {
   const [disableBlocking, { isLoading: isDisabling }] = useDisableBlockingMutation();
 
   useEffect(() => {
+    if (!activeServer) return;
     if (summaryError || statusError) {
       const error: any = summaryError || statusError;
       if (error.status === 401) {
-        dispatch(setAuthenticationStatus(false));
+        dispatch(setServerSession({ id: activeServer.id, session: { isAuthenticated: false } }));
       } else {
-        dispatch(setConnectionStatus(false));
+        dispatch(setServerSession({ id: activeServer.id, session: { isConnected: false } }));
       }
     } else if (summary) {
-      dispatch(setConnectionStatus(true));
-      dispatch(setAuthenticationStatus(true));
+      dispatch(setServerSession({ id: activeServer.id, session: { isConnected: true, isAuthenticated: true } }));
     }
-  }, [summary, summaryError, statusError, dispatch]);
+  }, [summary, summaryError, statusError, activeServer, dispatch]);
 
   const handleEnable = async () => {
     try {
@@ -77,7 +83,7 @@ const DashboardScreen: React.FC = () => {
     }
   };
 
-  if (!piHoleConfig) {
+  if (!activeServer) {
     return (
       <View style={styles.centeredMessage}>
         <Text style={styles.messageText}>
