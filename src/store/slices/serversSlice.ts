@@ -1,12 +1,12 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { Server, ServerSession, ServersState } from '../types';
 
-const defaultSession = (): ServerSession => ({
+const DEFAULT_SESSION: ServerSession = {
   isConnected: false,
   isAuthenticated: false,
   sid: undefined,
   requiresAuth: true,
-});
+};
 
 const initialState: ServersState = {
   servers: [],
@@ -40,12 +40,12 @@ const serversSlice = createSlice({
     },
     setServerSession: (state, action: PayloadAction<{ id: string; session: Partial<ServerSession> }>) => {
       state.sessions[action.payload.id] = {
-        ...(state.sessions[action.payload.id] ?? defaultSession()),
+        ...(state.sessions[action.payload.id] ?? DEFAULT_SESSION),
         ...action.payload.session,
       };
     },
     clearServerSession: (state, action: PayloadAction<string>) => {
-      state.sessions[action.payload] = defaultSession();
+      state.sessions[action.payload] = DEFAULT_SESSION;
     },
   },
 });
@@ -68,5 +68,5 @@ export const selectActiveServer = (state: { servers: ServersState }): Server | n
 
 export const selectActiveSession = (state: { servers: ServersState }): ServerSession => {
   const { sessions, activeServerId } = state.servers;
-  return activeServerId ? (sessions[activeServerId] ?? defaultSession()) : defaultSession();
+  return activeServerId ? (sessions[activeServerId] ?? DEFAULT_SESSION) : DEFAULT_SESSION;
 };
