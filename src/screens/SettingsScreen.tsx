@@ -1,142 +1,36 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  ActivityIndicator,
-} from 'react-native';
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { SettingsStackParamList } from '../../App';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import {
-  addServer,
-  updateServer,
-  setServerSession,
-  clearServerSession,
+  removeServer,
+  setActiveServer,
   selectActiveServer,
-  selectActiveSession,
 } from '../store/slices/serversSlice';
-import { Server } from '../store/types';
-import {
-  useLazyTestConnectionQuery,
-  useLoginMutation,
-} from '../store/api/piholeApi';
+import { Server, ServersState } from '../store/types';
 
-type Status =
-  | { kind: 'idle' }
-  | { kind: 'connecting' }
-  | { kind: 'error'; message: string };
+const SERVER_COLORS = ['#3b5bdb', '#2f9e44', '#e67700', '#c92a2a', '#5f3dc4'];
 
-function nameFromUrl(url: string): string {
-  try { return new URL(url).hostname; } catch { return url; }
-}
-
-function genId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+function serverColor(index: number): string {
+  return SERVER_COLORS[index % SERVER_COLORS.length];
 }
 
 const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<SettingsStackParamList>>();
   const dispatch = useAppDispatch();
+  const servers = useAppSelector((state: { servers: ServersState }) => state.servers.servers);
+  const sessions = useAppSelector((state: { servers: ServersState }) => state.servers.sessions);
   const activeServer = useAppSelector(selectActiveServer);
-  const activeSession = useAppSelector(selectActiveSession);
 
-  const [baseUrl, setBaseUrl] = useState(activeServer?.baseUrl ?? 'http://');
-  const [password, setPassword] = useState(activeServer?.password ?? '');
-  const [status, setStatus] = useState<Status>({ kind: 'idle' });
-
-  const [testConnection] = useLazyTestConnectionQuery();
-  const [login] = useLoginMutation();
-
-  const isConnected = activeSession.isConnected;
-  const isAuthenticated = activeSession.isAuthenticated;
-  const fullyConnected = isConnected && isAuthenticated;
-  const isBusy = status.kind === 'connecting';
-  const inputsChanged =
-    baseUrl.trim() !== (activeServer?.baseUrl ?? '') ||
-    password !== (activeServer?.password ?? '');
-  const canConnect = baseUrl.trim().length > 0 && !isBusy && (!fullyConnected || inputsChanged);
-
-  const handleConnect = async () => {
-    const url = baseUrl.trim();
-    if (!url) return;
-
-    setStatus({ kind: 'connecting' });
-
-    try {
-      const result = await testConnection({ baseUrl: url }).unwrap();
-
-      if (!result?.connected) {
-        setStatus({ kind: 'error', message: result?.message ?? 'Cannot reach Pi-hole server' });
-        if (activeServer) {
-          dispatch(setServerSession({ id: activeServer.id, session: { isConnected: false, isAuthenticated: false } }));
-        }
-        return;
-      }
-
-      // Upsert the server profile
-      const serverId = activeServer?.id ?? genId();
-      const server: Server = {
-        id: serverId,
-        name: nameFromUrl(url),
-        baseUrl: url,
-        password: password.trim() || undefined,
-      };
-      if (activeServer) {
-        dispatch(updateServer(server));
-      } else {
-        dispatch(addServer(server));
-      }
-
-      dispatch(setServerSession({ id: serverId, session: { isConnected: true } }));
-
-      if (!result.requiresAuth) {
-        dispatch(setServerSession({ id: serverId, session: { isAuthenticated: true, requiresAuth: false, sid: undefined } }));
-        setStatus({ kind: 'idle' });
-        return;
-      }
-
-      dispatch(setServerSession({ id: serverId, session: { requiresAuth: true } }));
-
-      if (!password.trim()) {
-        setStatus({ kind: 'error', message: 'Password required for this Pi-hole' });
-        dispatch(setServerSession({ id: serverId, session: { isAuthenticated: false } }));
-        return;
-      }
-
-      const loginResult = await login({ password: password.trim() }).unwrap();
-
-      if (loginResult.session?.valid && loginResult.session?.sid) {
-        dispatch(setServerSession({ id: serverId, session: { isAuthenticated: true, sid: loginResult.session.sid } }));
-        setStatus({ kind: 'idle' });
-      } else {
-        setStatus({ kind: 'error', message: loginResult.session?.message ?? 'Incorrect password' });
-        dispatch(setServerSession({ id: serverId, session: { isAuthenticated: false } }));
-      }
-    } catch (err: any) {
-      setStatus({ kind: 'error', message: err?.message ?? 'Connection failed' });
-      if (activeServer) {
-        dispatch(setServerSession({ id: activeServer.id, session: { isConnected: false, isAuthenticated: false } }));
-      }
-    }
-  };
-
-  const handleDisconnect = () => {
-    setPassword('');
-    if (activeServer) dispatch(clearServerSession(activeServer.id));
-    setStatus({ kind: 'idle' });
-  };
+  const fullyConnected =
+    !!activeServer &&
+    (sessions[activeServer.id]?.isConnected ?? false) &&
+    (sessions[activeServer.id]?.isAuthenticated ?? false);
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      keyboardShouldPersistTaps="handled"
-    >
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <TouchableOpacity
         style={[styles.healthRow, !fullyConnected && styles.healthRowDisabled]}
         onPress={() => navigation.navigate('Health')}
@@ -144,74 +38,65 @@ const SettingsScreen: React.FC = () => {
         activeOpacity={0.6}
       >
         <View style={styles.healthRowLeft}>
-          <Text style={[styles.healthRowTitle, !fullyConnected && styles.disabledText]}>
+          <Text style={[styles.healthRowTitle, !fullyConnected && styles.dimText]}>
             System Health
           </Text>
-          <Text style={[styles.healthRowSub, !fullyConnected && styles.disabledSubText]}>
-            {fullyConnected ? 'CPU, memory, uptime' : 'Connect to view'}
+          <Text style={[styles.healthRowSub, !fullyConnected && styles.dimText]}>
+            {fullyConnected ? `CPU, memory, uptime · ${activeServer?.name}` : 'Connect to view'}
           </Text>
         </View>
-        <Text style={[styles.healthRowChevron, !fullyConnected && styles.disabledText]}>›</Text>
+        <Text style={[styles.chevron, !fullyConnected && styles.dimText]}>›</Text>
       </TouchableOpacity>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Pi-hole Server</Text>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>URL</Text>
-          <TextInput
-            style={styles.textInput}
-            value={baseUrl}
-            onChangeText={setBaseUrl}
-            placeholder="http://192.168.1.100"
-            placeholderTextColor="#bbb"
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            editable={!isBusy}
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.textInput}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Pi-hole password"
-            placeholderTextColor="#bbb"
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!isBusy}
-          />
-        </View>
-
-        <TouchableOpacity
-          style={[styles.connectButton, !canConnect && styles.connectButtonDisabled]}
-          onPress={handleConnect}
-          disabled={!canConnect}
-          activeOpacity={0.8}
-        >
-          {isBusy ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Text style={styles.connectButtonText}>Connect</Text>
-          )}
-        </TouchableOpacity>
-
-        {status.kind === 'error' && (
-          <Text style={styles.statusError}>{status.message}</Text>
-        )}
-
-        {fullyConnected && status.kind !== 'error' && (
-          <Text style={styles.statusSuccess}>Connected to {activeServer?.baseUrl}</Text>
-        )}
-
-        {fullyConnected && (
-          <TouchableOpacity onPress={handleDisconnect} style={styles.disconnectLink} activeOpacity={0.5}>
-            <Text style={styles.disconnectLinkText}>Disconnect</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Servers</Text>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => navigation.navigate('ServerEditor', {})}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.addButtonText}>+ Add</Text>
           </TouchableOpacity>
+        </View>
+
+        {servers.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>No servers added yet.</Text>
+            <TouchableOpacity
+              style={styles.addFirstButton}
+              onPress={() => navigation.navigate('ServerEditor', {})}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.addFirstButtonText}>Add your first Pi-hole</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          servers.map((server: Server, index: number) => {
+            const session = sessions[server.id];
+            const connected = session?.isConnected && session?.isAuthenticated;
+            const isActive = server.id === activeServer?.id;
+            const color = serverColor(index);
+
+            return (
+              <TouchableOpacity
+                key={server.id}
+                style={styles.serverRow}
+                onPress={() => navigation.navigate('ServerEditor', { serverId: server.id })}
+                activeOpacity={0.6}
+              >
+                <View style={[styles.statusDot, { backgroundColor: connected ? '#2e7d32' : '#ccc' }]} />
+                <View style={styles.serverInfo}>
+                  <View style={styles.serverNameRow}>
+                    <Text style={[styles.serverName, { color }]}>{server.name}</Text>
+                    {isActive && <View style={styles.activeBadge}><Text style={styles.activeBadgeText}>ACTIVE</Text></View>}
+                  </View>
+                  <Text style={styles.serverUrl} numberOfLines={1}>{server.baseUrl}</Text>
+                </View>
+                <Text style={styles.chevron}>›</Text>
+              </TouchableOpacity>
+            );
+          })
         )}
       </View>
     </ScrollView>
@@ -219,13 +104,9 @@ const SettingsScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  contentContainer: {
-    paddingBottom: 32,
-  },
+  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  content: { paddingBottom: 32 },
+
   healthRow: {
     backgroundColor: 'white',
     marginHorizontal: 16,
@@ -243,108 +124,79 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  healthRowDisabled: {
-    opacity: 0.6,
-  },
-  healthRowLeft: {
-    gap: 2,
-  },
-  healthRowTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-  healthRowSub: {
-    fontSize: 12,
-    color: '#999',
-  },
-  healthRowChevron: {
-    fontSize: 22,
-    color: '#ccc',
-    lineHeight: 26,
-  },
-  disabledText: {
-    color: '#bbb',
-  },
-  disabledSubText: {
-    color: '#bbb',
-  },
+  healthRowDisabled: { opacity: 0.5 },
+  healthRowLeft: { gap: 2, flex: 1 },
+  healthRowTitle: { fontSize: 16, fontWeight: '600', color: '#333' },
+  healthRowSub: { fontSize: 12, color: '#999' },
+
   section: {
     backgroundColor: 'white',
     margin: 16,
-    padding: 24,
     borderRadius: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 3,
+    overflow: 'hidden',
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 20,
-    color: '#333',
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 8,
-    color: '#888',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  textInput: {
-    borderWidth: 1,
-    borderColor: '#e5e5e5',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    backgroundColor: '#fafafa',
-    color: '#333',
-  },
-  connectButton: {
-    backgroundColor: '#2196f3',
-    paddingVertical: 14,
-    borderRadius: 10,
+  sectionHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-    minHeight: 50,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
-  connectButtonDisabled: {
-    backgroundColor: '#b0bec5',
-  },
-  connectButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  statusSuccess: {
-    color: '#2e7d32',
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 14,
-  },
-  statusError: {
-    color: '#c62828',
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 14,
-  },
-  disconnectLink: {
-    marginTop: 18,
-    alignItems: 'center',
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#333' },
+  addButton: {
+    backgroundColor: '#e8f0fe',
+    borderRadius: 8,
+    paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  disconnectLinkText: {
-    color: '#999',
-    fontSize: 14,
+  addButtonText: { fontSize: 13, fontWeight: '600', color: '#2196f3' },
+
+  emptyState: { alignItems: 'center', paddingVertical: 32, paddingHorizontal: 20 },
+  emptyText: { fontSize: 14, color: '#aaa', marginBottom: 16 },
+  addFirstButton: {
+    backgroundColor: '#2196f3',
+    borderRadius: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
   },
+  addFirstButtonText: { color: 'white', fontWeight: '600', fontSize: 15 },
+
+  serverRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f5f5f5',
+    gap: 12,
+  },
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    flexShrink: 0,
+  },
+  serverInfo: { flex: 1, gap: 3 },
+  serverNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  serverName: { fontSize: 15, fontWeight: '600' },
+  serverUrl: { fontSize: 12, color: '#999' },
+  activeBadge: {
+    backgroundColor: '#e8f5e9',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  activeBadgeText: { fontSize: 10, fontWeight: '700', color: '#2e7d32', letterSpacing: 0.5 },
+
+  chevron: { fontSize: 20, color: '#ccc', lineHeight: 24 },
+  dimText: { color: '#bbb' },
 });
 
 export default SettingsScreen;

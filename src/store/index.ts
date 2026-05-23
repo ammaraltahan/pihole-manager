@@ -4,14 +4,14 @@ import {
   persistReducer,
   FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER,
 } from 'redux-persist';
-import storage from './storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { piHoleApi } from './api/piholeApi';
 import serversReducer from './slices/serversSlice';
 import { ServersState } from './types';
 
 const serversPersistConfig = {
   key: 'servers',
-  storage,
+  storage: AsyncStorage,
   blacklist: ['sessions'],  // runtime session state resets on each app start
 };
 
